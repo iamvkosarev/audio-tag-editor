@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/iamvkosarev/music-tag-editor/internal/service/audio"
 	"log"
 	"net/http"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"github.com/iamvkosarev/music-tag-editor/internal/config"
 	"github.com/iamvkosarev/music-tag-editor/internal/handler"
 	"github.com/iamvkosarev/music-tag-editor/internal/server"
-	"github.com/iamvkosarev/music-tag-editor/internal/service"
 )
 
 type App struct {
@@ -21,7 +21,7 @@ type App struct {
 }
 
 func New(cfg *config.Config) *App {
-	audioService := service.NewAudioService()
+	audioService := audio.NewAudioService()
 
 	h := handler.New(audioService)
 

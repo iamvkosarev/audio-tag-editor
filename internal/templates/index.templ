@@ -28,6 +28,12 @@ templ Index() {
 				.upload-section {
 					margin: 2rem 0;
 				}
+				.actions-section {
+					display: flex;
+					gap: 0.5rem;
+					margin: 1rem 0;
+					flex-wrap: wrap;
+				}
 				.file-input-wrapper {
 					position: relative;
 					display: inline-block;
@@ -38,7 +44,7 @@ templ Index() {
 					width: 0;
 					height: 0;
 				}
-				.upload-btn {
+				.upload-btn, .action-btn {
 					background-color: #007bff;
 					color: white;
 					padding: 0.75rem 1.5rem;
@@ -48,8 +54,91 @@ templ Index() {
 					font-size: 1rem;
 					transition: background-color 0.2s;
 				}
-				.upload-btn:hover {
+				.upload-btn:hover, .action-btn:hover {
 					background-color: #0056b3;
+				}
+				.action-btn:disabled {
+					background-color: #ccc;
+					cursor: not-allowed;
+				}
+				.action-btn.active {
+					background-color: #28a745;
+				}
+				.action-btn.edit-btn {
+					background-color: #ffc107;
+					color: #333;
+				}
+				.action-btn.edit-btn:hover {
+					background-color: #e0a800;
+				}
+				.edit-form {
+					display: none;
+					background: white;
+					border: 2px solid #007bff;
+					border-radius: 8px;
+					padding: 1.5rem;
+					margin: 1rem 0;
+				}
+				.edit-form.active {
+					display: block;
+				}
+				.edit-form h3 {
+					margin-top: 0;
+					color: #333;
+				}
+				.form-group {
+					margin: 1rem 0;
+				}
+				.form-group label {
+					display: block;
+					margin-bottom: 0.5rem;
+					font-weight: 600;
+					color: #333;
+				}
+				.form-group input {
+					width: 100%;
+					padding: 0.5rem;
+					border: 1px solid #ddd;
+					border-radius: 4px;
+					font-size: 1rem;
+					box-sizing: border-box;
+				}
+				.form-actions {
+					display: flex;
+					gap: 0.5rem;
+					margin-top: 1rem;
+				}
+				.btn-primary {
+					background-color: #007bff;
+					color: white;
+					padding: 0.5rem 1rem;
+					border: none;
+					border-radius: 4px;
+					cursor: pointer;
+				}
+				.btn-primary:hover {
+					background-color: #0056b3;
+				}
+				.btn-secondary {
+					background-color: #6c757d;
+					color: white;
+					padding: 0.5rem 1rem;
+					border: none;
+					border-radius: 4px;
+					cursor: pointer;
+				}
+				.btn-secondary:hover {
+					background-color: #5a6268;
+				}
+				.files-table tr.selected {
+					background-color: #e7f3ff;
+				}
+				.changed {
+					background-color: #fff3cd;
+				}
+				.checkbox-cell {
+					width: 30px;
+					text-align: center;
 				}
 				.files-table {
 					width: 100%;
@@ -146,6 +235,43 @@ templ Index() {
 						<button class="upload-btn" onclick="document.getElementById('fileInput').click()">Load Files</button>
 					</div>
 				</div>
+				<div class="actions-section" id="actionsSection" style="display: none;">
+					<button class="action-btn" id="selectBtn" onclick="toggleSelectMode()">Select</button>
+					<button class="action-btn edit-btn" id="editBtn" onclick="showEditForm()" disabled style="display: none;">Edit</button>
+					<button class="action-btn" id="downloadBtn" onclick="downloadSelectedFiles()" disabled style="display: none;">Download Selected</button>
+					<button class="action-btn" onclick="downloadAllFiles()">Download All</button>
+				</div>
+				<div class="edit-form" id="editForm">
+					<h3>Edit Tags</h3>
+					<div class="form-group">
+						<label for="editTitle">Title:</label>
+						<input type="text" id="editTitle" placeholder="Enter track title">
+					</div>
+					<div class="form-group">
+						<label for="editArtist">Artist:</label>
+						<input type="text" id="editArtist" placeholder="Enter artist name">
+					</div>
+					<div class="form-group">
+						<label for="editAlbum">Album:</label>
+						<input type="text" id="editAlbum" placeholder="Enter album name">
+					</div>
+					<div class="form-group">
+						<label for="editYear">Year:</label>
+						<input type="number" id="editYear" placeholder="Enter year" min="1900" max="2100">
+					</div>
+					<div class="form-group">
+						<label for="editTrack">Track:</label>
+						<input type="number" id="editTrack" placeholder="Enter track number" min="1">
+					</div>
+					<div class="form-group">
+						<label for="editGenre">Genre:</label>
+						<input type="text" id="editGenre" placeholder="Enter genre">
+					</div>
+					<div class="form-actions">
+						<button class="btn-primary" onclick="saveTags()">Save</button>
+						<button class="btn-secondary" onclick="cancelEdit()">Cancel</button>
+					</div>
+				</div>
 				<div id="filesContainer">
 					<div class="empty-state">No files loaded yet. Click "Load Files" to select audio files.</div>
 				</div>
@@ -153,6 +279,9 @@ templ Index() {
 			<script>
 				let currentFiles = [];
 				let sortState = { column: 'track', direction: 'asc' };
+				let selectionMode = false;
+				let selectedFileIds = new Set();
+				let fileIdMap = new Map();
 
 				document.getElementById('fileInput').addEventListener('change', async function(e) {
 					const files = e.target.files;
@@ -178,8 +307,17 @@ templ Index() {
 
 						const data = await response.json();
 						currentFiles = data.files;
+						fileIdMap.clear();
+						currentFiles.forEach((file, index) => {
+							fileIdMap.set(file.id || index, file);
+						});
 						sortState = { column: 'track', direction: 'asc' };
+						selectionMode = false;
+						selectedFileIds.clear();
 						displayFiles(currentFiles);
+						if (currentFiles.length > 0) {
+							document.getElementById('actionsSection').style.display = 'flex';
+						}
 					} catch (error) {
 						container.innerHTML = '<div class="empty-state" style="color: red;">Error loading files: ' + error.message + '</div>';
 					}
@@ -227,6 +365,7 @@ templ Index() {
 					
 					if (files.length === 0) {
 						container.innerHTML = '<div class="empty-state">No files loaded.</div>';
+						document.getElementById('actionsSection').style.display = 'none';
 						return;
 					}
 
@@ -240,6 +379,9 @@ templ Index() {
 					};
 
 					let html = '<table class="files-table"><thead><tr>';
+					if (selectionMode) {
+						html += '<th class="checkbox-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)"></th>';
+					}
 					html += '<th>Cover</th>';
 					html += '<th class="' + getSortClass('title') + '" onclick="handleSort(\'title\')">Title<span class="sort-indicator"></span></th>';
 					html += '<th class="' + getSortClass('artist') + '" onclick="handleSort(\'artist\')">Artist<span class="sort-indicator"></span></th>';
@@ -250,29 +392,347 @@ templ Index() {
 					html += '<th class="' + getSortClass('duration') + '" onclick="handleSort(\'duration\')">Duration<span class="sort-indicator"></span></th>';
 					html += '<th class="' + getSortClass('format') + '" onclick="handleSort(\'format\')">Format<span class="sort-indicator"></span></th>';
 					html += '<th class="' + getSortClass('size') + '" onclick="handleSort(\'size\')">File Size<span class="sort-indicator"></span></th>';
+					html += '<th></th>';
 					html += '</tr></thead><tbody>';
 					
-					sortedFiles.forEach(file => {
-						html += '<tr>';
+					sortedFiles.forEach((file, index) => {
+						const fileId = file.id || index;
+						const isSelected = selectedFileIds.has(fileId);
+						html += '<tr data-file-id="' + fileId + '"' + (isSelected ? ' class="selected"' : '') + '>';
+						if (selectionMode) {
+							html += '<td class="checkbox-cell"><input type="checkbox" class="file-checkbox" data-file-id="' + fileId + '"' + (isSelected ? ' checked' : '') + ' onchange="toggleFileSelection(\'' + fileId + '\', this.checked)"></td>';
+						}
 						if (file.coverArt) {
 							html += '<td><img src="' + escapeHtml(file.coverArt) + '" alt="Cover" class="cover-art"></td>';
 						} else {
 							html += '<td><div class="cover-art-placeholder">No Cover</div></td>';
 						}
-						html += '<td>' + escapeHtml(file.title || 'Unknown') + '</td>';
-						html += '<td>' + escapeHtml(file.artist || '-') + '</td>';
-						html += '<td>' + escapeHtml(file.album || '-') + '</td>';
-						html += '<td>' + (file.year || '-') + '</td>';
-						html += '<td>' + escapeHtml(file.genre || '-') + '</td>';
-						html += '<td>' + (file.track || '-') + '</td>';
+						const changedFields = file.changedFields || [];
+						html += '<td' + (changedFields.includes('title') ? ' class="changed"' : '') + '>' + escapeHtml(file.title || 'Unknown') + '</td>';
+						html += '<td' + (changedFields.includes('artist') ? ' class="changed"' : '') + '>' + escapeHtml(file.artist || '-') + '</td>';
+						html += '<td' + (changedFields.includes('album') ? ' class="changed"' : '') + '>' + escapeHtml(file.album || '-') + '</td>';
+						html += '<td' + (changedFields.includes('year') ? ' class="changed"' : '') + '>' + (file.year !== undefined && file.year !== null ? file.year : '-') + '</td>';
+						html += '<td' + (changedFields.includes('genre') ? ' class="changed"' : '') + '>' + escapeHtml(file.genre || '-') + '</td>';
+						html += '<td' + (changedFields.includes('track') ? ' class="changed"' : '') + '>' + (file.track !== undefined && file.track !== null && file.track !== 0 ? file.track : '-') + '</td>';
 						html += '<td>' + formatDuration(file.duration) + '</td>';
 						html += '<td>' + escapeHtml(file.format || '-') + '</td>';
 						html += '<td>' + formatFileSize(file.size) + '</td>';
+						html += '<td>';
+						html += '<button class="btn-primary" onclick="editSingleFile(\'' + fileId + '\')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-bottom: 0.25rem; display: block; width: 100%;">Edit</button>';
+						html += '<button class="btn-primary" onclick="downloadFile(\'' + fileId + '\')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; display: block; width: 100%;">Download</button>';
+						html += '</td>';
 						html += '</tr>';
 					});
 					
 					html += '</tbody></table>';
 					container.innerHTML = html;
+					updateEditButtonState();
+				}
+
+				function toggleSelectMode() {
+					selectionMode = !selectionMode;
+					const btn = document.getElementById('selectBtn');
+					const editBtn = document.getElementById('editBtn');
+					const downloadBtn = document.getElementById('downloadBtn');
+					if (selectionMode) {
+						btn.classList.add('active');
+						btn.textContent = 'Cancel Selection';
+						editBtn.style.display = 'inline-block';
+						downloadBtn.style.display = 'inline-block';
+					} else {
+						btn.classList.remove('active');
+						btn.textContent = 'Select';
+						selectedFileIds.clear();
+						document.getElementById('editForm').classList.remove('active');
+						editBtn.style.display = 'none';
+						downloadBtn.style.display = 'none';
+					}
+					updateEditButtonState();
+					displayFiles(currentFiles);
+				}
+
+				function toggleFileSelection(fileId, checked) {
+					if (checked) {
+						selectedFileIds.add(fileId);
+					} else {
+						selectedFileIds.delete(fileId);
+					}
+					const row = document.querySelector('tr[data-file-id="' + fileId + '"]');
+					if (row) {
+						if (checked) {
+							row.classList.add('selected');
+						} else {
+							row.classList.remove('selected');
+						}
+					}
+					updateEditButtonState();
+					updateSelectAllCheckbox();
+				}
+
+				function toggleSelectAll(checked) {
+					const sortedFiles = sortFiles(currentFiles, sortState.column, sortState.direction);
+					sortedFiles.forEach((file, index) => {
+						const fileId = file.id || index;
+						if (checked) {
+							selectedFileIds.add(fileId);
+						} else {
+							selectedFileIds.delete(fileId);
+						}
+						const checkbox = document.querySelector('.file-checkbox[data-file-id="' + fileId + '"]');
+						if (checkbox) {
+							checkbox.checked = checked;
+						}
+						const row = document.querySelector('tr[data-file-id="' + fileId + '"]');
+						if (row) {
+							if (checked) {
+								row.classList.add('selected');
+							} else {
+								row.classList.remove('selected');
+							}
+						}
+					});
+					updateEditButtonState();
+				}
+
+				function updateSelectAllCheckbox() {
+					const selectAllCheckbox = document.getElementById('selectAll');
+					if (selectAllCheckbox) {
+						const sortedFiles = sortFiles(currentFiles, sortState.column, sortState.direction);
+						const allSelected = sortedFiles.every((file, index) => {
+							const fileId = file.id || index;
+							return selectedFileIds.has(fileId);
+						});
+						selectAllCheckbox.checked = allSelected && sortedFiles.length > 0;
+					}
+				}
+
+				function updateEditButtonState() {
+					const editBtn = document.getElementById('editBtn');
+					const downloadBtn = document.getElementById('downloadBtn');
+					const hasSelection = selectedFileIds.size > 0;
+					editBtn.disabled = !hasSelection;
+					downloadBtn.disabled = !hasSelection;
+				}
+
+				function editSingleFile(fileId) {
+					selectedFileIds.clear();
+					selectedFileIds.add(fileId);
+					if (!selectionMode) {
+						selectionMode = true;
+						const btn = document.getElementById('selectBtn');
+						btn.classList.add('active');
+						btn.textContent = 'Cancel Selection';
+						const editBtn = document.getElementById('editBtn');
+						const downloadBtn = document.getElementById('downloadBtn');
+						editBtn.style.display = 'inline-block';
+						downloadBtn.style.display = 'inline-block';
+					}
+					updateEditButtonState();
+					showEditForm();
+					displayFiles(currentFiles);
+				}
+
+				function showEditForm() {
+					if (selectedFileIds.size === 0) return;
+					
+					const selectedFiles = Array.from(selectedFileIds).map(id => fileIdMap.get(id)).filter(f => f);
+					
+					const commonTitle = getCommonValue(selectedFiles, 'title');
+					const commonArtist = getCommonValue(selectedFiles, 'artist');
+					const commonAlbum = getCommonValue(selectedFiles, 'album');
+					const commonYear = getCommonValue(selectedFiles, 'year');
+					const commonTrack = getCommonValue(selectedFiles, 'track');
+					const commonGenre = getCommonValue(selectedFiles, 'genre');
+					
+					document.getElementById('editTitle').value = commonTitle || '';
+					document.getElementById('editArtist').value = commonArtist || '';
+					document.getElementById('editAlbum').value = commonAlbum || '';
+					document.getElementById('editYear').value = (commonYear !== undefined && commonYear !== null) ? commonYear : '';
+					document.getElementById('editTrack').value = (commonTrack !== undefined && commonTrack !== null && commonTrack !== 0) ? commonTrack : '';
+					document.getElementById('editGenre').value = commonGenre || '';
+					
+					document.getElementById('editForm').classList.add('active');
+				}
+
+				function getCommonValue(files, field) {
+					if (files.length === 0) return '';
+					const firstValue = files[0][field];
+					if (firstValue === undefined || firstValue === null) return '';
+					if (files.every(f => {
+						const val = f[field];
+						if (val === undefined || val === null) return firstValue === '';
+						return val === firstValue;
+					})) {
+						return firstValue;
+					}
+					return '';
+				}
+
+				function cancelEdit() {
+					document.getElementById('editForm').classList.remove('active');
+					document.getElementById('editTitle').value = '';
+					document.getElementById('editArtist').value = '';
+					document.getElementById('editAlbum').value = '';
+					document.getElementById('editYear').value = '';
+					document.getElementById('editTrack').value = '';
+					document.getElementById('editGenre').value = '';
+				}
+
+				async function saveTags() {
+					if (selectedFileIds.size === 0) return;
+					
+					const title = document.getElementById('editTitle').value.trim();
+					const artist = document.getElementById('editArtist').value.trim();
+					const album = document.getElementById('editAlbum').value.trim();
+					const yearStr = document.getElementById('editYear').value.trim();
+					const trackStr = document.getElementById('editTrack').value.trim();
+					const genre = document.getElementById('editGenre').value.trim();
+					
+					let year = null;
+					if (yearStr !== '') {
+						const yearNum = parseInt(yearStr, 10);
+						if (!isNaN(yearNum) && yearNum > 0) {
+							year = yearNum;
+						}
+					}
+					
+					let track = null;
+					if (trackStr !== '') {
+						const trackNum = parseInt(trackStr, 10);
+						if (!isNaN(trackNum) && trackNum > 0) {
+							track = trackNum;
+						}
+					}
+					
+					const updates = {
+						fileIds: Array.from(selectedFileIds),
+						title: title === '' ? null : title,
+						artist: artist === '' ? null : artist,
+						album: album === '' ? null : album,
+						year: year,
+						track: track,
+						genre: genre === '' ? null : genre
+					};
+					
+					console.log('Update payload:', JSON.stringify(updates));
+					
+					try {
+						console.log('Sending update request:', updates);
+						const response = await fetch('/api/update-tags', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify(updates)
+						});
+						
+						console.log('Response status:', response.status, response.statusText);
+						console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+						
+						if (!response.ok) {
+							const errorText = await response.text();
+							console.error('Error response:', errorText);
+							throw new Error('Failed to update tags: ' + errorText);
+						}
+						
+						const responseText = await response.text();
+						console.log('Response body:', responseText);
+						
+						let data;
+						try {
+							data = JSON.parse(responseText);
+							console.log('Parsed data:', data);
+						} catch (parseError) {
+							console.error('Failed to parse JSON:', parseError, 'Response text:', responseText);
+							throw new Error('Invalid JSON response from server: ' + responseText.substring(0, 100));
+						}
+						
+						if (!data || !data.files) {
+							console.error('Invalid response structure:', data);
+							throw new Error('Invalid response from server. Expected data.files, got: ' + JSON.stringify(data));
+						}
+						
+						if (data.files.length === 0) {
+							alert('No files were updated. Make sure the files are MP3 format.');
+							return;
+						}
+						
+						data.files.forEach(updatedFile => {
+							console.log('Processing updated file:', updatedFile);
+							const index = currentFiles.findIndex(f => f.id === updatedFile.id);
+							console.log('Found index:', index, 'for file ID:', updatedFile.id);
+							if (index !== -1) {
+								console.log('Before update - Title:', currentFiles[index].title, 'Artist:', currentFiles[index].artist, 'Album:', currentFiles[index].album, 'Year:', currentFiles[index].year, 'Genre:', currentFiles[index].genre);
+								
+								if (!currentFiles[index].changedFields) {
+									currentFiles[index].changedFields = [];
+								}
+								
+								if ('title' in updatedFile) {
+									if (currentFiles[index].title !== (updatedFile.title || '')) {
+										currentFiles[index].title = updatedFile.title || '';
+										if (!currentFiles[index].changedFields.includes('title')) {
+											currentFiles[index].changedFields.push('title');
+										}
+									}
+								}
+								if ('artist' in updatedFile) {
+									if (currentFiles[index].artist !== (updatedFile.artist || '')) {
+										currentFiles[index].artist = updatedFile.artist || '';
+										if (!currentFiles[index].changedFields.includes('artist')) {
+											currentFiles[index].changedFields.push('artist');
+										}
+									}
+								}
+								if ('album' in updatedFile) {
+									if (currentFiles[index].album !== (updatedFile.album || '')) {
+										currentFiles[index].album = updatedFile.album || '';
+										if (!currentFiles[index].changedFields.includes('album')) {
+											currentFiles[index].changedFields.push('album');
+										}
+									}
+								}
+								if ('year' in updatedFile) {
+									const newYear = updatedFile.year !== undefined && updatedFile.year !== null ? updatedFile.year : 0;
+									if (currentFiles[index].year !== newYear) {
+										currentFiles[index].year = newYear;
+										if (!currentFiles[index].changedFields.includes('year')) {
+											currentFiles[index].changedFields.push('year');
+										}
+									}
+								}
+								if ('track' in updatedFile) {
+									const newTrack = updatedFile.track !== undefined && updatedFile.track !== null ? updatedFile.track : 0;
+									if (currentFiles[index].track !== newTrack) {
+										currentFiles[index].track = newTrack;
+										if (!currentFiles[index].changedFields.includes('track')) {
+											currentFiles[index].changedFields.push('track');
+										}
+									}
+								}
+								if ('genre' in updatedFile) {
+									if (currentFiles[index].genre !== (updatedFile.genre || '')) {
+										currentFiles[index].genre = updatedFile.genre || '';
+										if (!currentFiles[index].changedFields.includes('genre')) {
+											currentFiles[index].changedFields.push('genre');
+										}
+									}
+								}
+								
+								console.log('After update - Title:', currentFiles[index].title, 'Artist:', currentFiles[index].artist, 'Album:', currentFiles[index].album, 'Year:', currentFiles[index].year, 'Track:', currentFiles[index].track, 'Genre:', currentFiles[index].genre);
+								fileIdMap.set(updatedFile.id, currentFiles[index]);
+							} else {
+								console.error('File not found in currentFiles. Updated file ID:', updatedFile.id);
+								console.log('Current file IDs:', currentFiles.map(f => f.id));
+							}
+						});
+						
+						cancelEdit();
+						selectedFileIds.clear();
+						displayFiles(currentFiles);
+					} catch (error) {
+						alert('Error updating tags: ' + error.message);
+					}
 				}
 
 				function formatDuration(seconds) {
@@ -293,6 +753,56 @@ templ Index() {
 					const div = document.createElement('div');
 					div.textContent = text;
 					return div.innerHTML;
+				}
+
+				function downloadFile(fileId) {
+					window.open('/api/download/' + fileId, '_blank');
+				}
+
+				async function downloadSelectedFiles() {
+					if (selectedFileIds.size === 0) return;
+					
+					const fileIds = Array.from(selectedFileIds);
+					
+					try {
+						const response = await fetch('/api/download-selected', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify({ fileIds: fileIds })
+						});
+						
+						if (!response.ok) {
+							throw new Error('Failed to download selected files');
+						}
+						
+						const contentDisposition = response.headers.get('Content-Disposition');
+						let filename = 'selected-tracks.zip';
+						if (contentDisposition) {
+							const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+							if (filenameMatch) {
+								filename = filenameMatch[1];
+							}
+						}
+						
+						const blob = await response.blob();
+						const url = window.URL.createObjectURL(blob);
+						const a = document.createElement('a');
+						a.href = url;
+						a.download = filename;
+						document.body.appendChild(a);
+						a.click();
+						document.body.removeChild(a);
+						window.URL.revokeObjectURL(url);
+					} catch (error) {
+						console.error('Error downloading selected files:', error);
+						alert('Failed to download selected files');
+					}
+				}
+
+				function downloadAllFiles() {
+					window.location.href = '/api/download-all';
 				}
 			</script>
 		</body>

@@ -17,6 +17,10 @@ func New(cfg *config.Config, h *handler.Handler) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", h.Index())
 	mux.HandleFunc("/api/upload", h.Upload())
+	mux.HandleFunc("/api/update-tags", h.UpdateTags())
+	mux.HandleFunc("/api/download/", h.Download())
+	mux.HandleFunc("/api/download-all", h.DownloadAll())
+	mux.HandleFunc("/api/download-selected", h.DownloadSelected())
 
 	srv := &http.Server{
 		Addr:         cfg.Server.Address(),

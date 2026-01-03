@@ -37,4 +37,3 @@ func Load(path string) (*Config, error) {
 func (c *ServerConfig) Address() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }
-

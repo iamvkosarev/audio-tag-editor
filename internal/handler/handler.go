@@ -1,27 +1,63 @@
 package handler
 
 import (
+	"archive/zip"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/iamvkosarev/music-tag-editor/internal/model"
 	"github.com/iamvkosarev/music-tag-editor/internal/templates"
 )
 
 type AudioService interface {
 	ParseFile(filePath string) (*model.FileMetadata, error)
+	UpdateTags(filePath string, title, artist, album *string, year, track *int, genre *string) error
+}
+
+type storedFile struct {
+	Path      string
+	Filename  string
+	Metadata  *model.FileMetadata
+	ExpiresAt time.Time
 }
 
 type Handler struct {
 	audioService AudioService
+	files        map[string]*storedFile
+	mu           sync.RWMutex
 }
 
 func New(audioService AudioService) *Handler {
-	return &Handler{
+	h := &Handler{
 		audioService: audioService,
+		files:        make(map[string]*storedFile),
+	}
+	go h.cleanupExpiredFiles()
+	return h
+}
+
+func (h *Handler) cleanupExpiredFiles() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		h.mu.Lock()
+		now := time.Now()
+		for id, file := range h.files {
+			if now.After(file.ExpiresAt) {
+				os.Remove(file.Path)
+				delete(h.files, id)
+			}
+		}
+		h.mu.Unlock()
 	}
 }
 
@@ -79,15 +115,447 @@ func (h *Handler) Upload() http.HandlerFunc {
 
 			metadata, err := h.audioService.ParseFile(tempFile.Name())
 			if err == nil {
-				fileMetadata = append(fileMetadata, *metadata)
-			}
+				fileID := uuid.New().String()
+				metadata.ID = fileID
 
-			os.Remove(tempFile.Name())
+				h.mu.Lock()
+				h.files[fileID] = &storedFile{
+					Path:      tempFile.Name(),
+					Filename:  fileHeader.Filename,
+					Metadata:  metadata,
+					ExpiresAt: time.Now().Add(24 * time.Hour),
+				}
+				h.mu.Unlock()
+
+				fileMetadata = append(fileMetadata, *metadata)
+			} else {
+				os.Remove(tempFile.Name())
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"files": fileMetadata,
-		})
+		json.NewEncoder(w).Encode(
+			map[string]interface{}{
+				"files": fileMetadata,
+			},
+		)
 	}
+}
+
+func (h *Handler) UpdateTags() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Handler.UpdateTags: Request received: Method=%s, Path=%s", r.Method, r.URL.Path)
+
+		if r.Method != http.MethodPost {
+			log.Printf("Handler.UpdateTags: Method not allowed: %s", r.Method)
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req model.TagUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			log.Printf("Handler.UpdateTags: Failed to decode request body: %v", err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf(
+			"Handler.UpdateTags: Request decoded: FileIds=%d, Title=%v, Artist=%v, Album=%v, Year=%v, Track=%v, Genre=%v",
+			len(req.FileIds), req.Title != nil, req.Artist != nil, req.Album != nil, req.Year != nil, req.Track != nil,
+			req.Genre != nil,
+		)
+		log.Printf("Handler.UpdateTags: File IDs: %v", req.FileIds)
+
+		if len(req.FileIds) == 0 {
+			log.Printf("Handler.UpdateTags: No file IDs provided")
+			http.Error(w, "No file IDs provided", http.StatusBadRequest)
+			return
+		}
+
+		var updatedFiles []model.FileMetadata
+		var errors []string
+
+		log.Printf("Handler.UpdateTags: About to acquire read lock...")
+		h.mu.RLock()
+		log.Printf("Handler.UpdateTags: Read lock acquired, Total stored files: %d", len(h.files))
+		for fileID, stored := range h.files {
+			log.Printf("Handler.UpdateTags: Stored file: ID=%s, Path=%s", fileID, stored.Path)
+		}
+
+		filePaths := make(map[string]string)
+		for _, fileID := range req.FileIds {
+			stored, exists := h.files[fileID]
+			if !exists {
+				errMsg := fmt.Sprintf("file %s not found", fileID)
+				log.Printf("Handler.UpdateTags: %s", errMsg)
+				errors = append(errors, errMsg)
+				continue
+			}
+			filePaths[fileID] = stored.Path
+		}
+		h.mu.RUnlock()
+		log.Printf("Handler.UpdateTags: Read lock released, processing %d files", len(filePaths))
+
+		for fileID, filePath := range filePaths {
+			log.Printf("Handler.UpdateTags: Processing file: ID=%s, Path=%s", fileID, filePath)
+
+			err := h.audioService.UpdateTags(filePath, req.Title, req.Artist, req.Album, req.Year, req.Track, req.Genre)
+			if err != nil {
+				errMsg := fmt.Sprintf("file %s: %v", fileID, err)
+				log.Printf("Handler.UpdateTags: Error updating tags: %s", errMsg)
+				errors = append(errors, errMsg)
+				continue
+			}
+
+			log.Printf("Handler.UpdateTags: Tags updated successfully for file: %s", fileID)
+
+			var metadata *model.FileMetadata
+			var parseErr error
+
+			metadata, parseErr = h.audioService.ParseFile(filePath)
+
+			if parseErr != nil {
+				errMsg := fmt.Sprintf("file %s: failed to re-parse: %v", fileID, parseErr)
+				log.Printf("Handler.UpdateTags: Error re-parsing file: %s", errMsg)
+				errors = append(errors, errMsg)
+				continue
+			}
+			metadata.ID = fileID
+			updatedFiles = append(updatedFiles, *metadata)
+
+			h.mu.Lock()
+			if stored, exists := h.files[fileID]; exists {
+				stored.Metadata = metadata
+			}
+			h.mu.Unlock()
+
+			log.Printf(
+				"Handler.UpdateTags: File re-parsed successfully: ID=%s, Artist=%s, Album=%s, Genre=%s",
+				fileID, metadata.Artist, metadata.Album, metadata.Genre,
+			)
+		}
+
+		log.Printf("Handler.UpdateTags: Processing complete: Updated=%d, Errors=%d", len(updatedFiles), len(errors))
+
+		w.Header().Set("Content-Type", "application/json")
+		response := map[string]interface{}{
+			"files": updatedFiles,
+		}
+		if len(errors) > 0 {
+			response["errors"] = errors
+			log.Printf("Handler.UpdateTags: Errors in response: %v", errors)
+		}
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Handler.UpdateTags: Failed to encode response: %v", err)
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("Handler.UpdateTags: Response sent successfully: Files=%d", len(updatedFiles))
+	}
+}
+
+func (h *Handler) Download() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		fileID := strings.TrimPrefix(r.URL.Path, "/api/download/")
+		if fileID == "" {
+			http.Error(w, "File ID required", http.StatusBadRequest)
+			return
+		}
+
+		h.mu.RLock()
+		stored, exists := h.files[fileID]
+		h.mu.RUnlock()
+
+		if !exists {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+
+		file, err := os.Open(stored.Path)
+		if err != nil {
+			log.Printf("Handler.Download: Failed to open file: %v", err)
+			http.Error(w, "Failed to open file", http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+
+		stat, err := file.Stat()
+		if err != nil {
+			log.Printf("Handler.Download: Failed to stat file: %v", err)
+			http.Error(w, "Failed to stat file", http.StatusInternalServerError)
+			return
+		}
+
+		downloadFilename := h.buildDownloadFilename(stored)
+
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", downloadFilename))
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", stat.Size()))
+
+		io.Copy(w, file)
+		log.Printf("Handler.Download: File downloaded: ID=%s, Filename=%s", fileID, downloadFilename)
+	}
+}
+
+func (h *Handler) buildDownloadFilename(stored *storedFile) string {
+	if stored.Metadata == nil {
+		return stored.Filename
+	}
+
+	meta := stored.Metadata
+	var filename string
+
+	artist := meta.Artist
+	album := meta.Album
+	disc := meta.Disc
+	track := meta.Track
+	title := meta.Title
+
+	if title == "" {
+		title = stored.Filename
+		ext := filepath.Ext(title)
+		title = strings.TrimSuffix(title, ext)
+	}
+
+	parts := []string{}
+	if artist != "" {
+		parts = append(parts, artist)
+	}
+	if album != "" {
+		parts = append(parts, album)
+	}
+
+	discTrackPart := ""
+	if track > 0 {
+		if disc > 0 {
+			discTrackPart = fmt.Sprintf("%d-%02d", disc, track)
+		} else {
+			discTrackPart = fmt.Sprintf("%02d", track)
+		}
+	}
+
+	if discTrackPart != "" {
+		parts = append(parts, discTrackPart)
+	}
+
+	if len(parts) > 0 {
+		filename = strings.Join(parts, " - ")
+		if title != "" {
+			filename += " " + title
+		}
+	} else {
+		if discTrackPart != "" && title != "" {
+			filename = discTrackPart + " " + title
+		} else {
+			filename = title
+		}
+	}
+	if filename == "" {
+		filename = stored.Filename
+	}
+
+	ext := filepath.Ext(stored.Filename)
+	if ext != "" && !strings.HasSuffix(filename, ext) {
+		filename += ext
+	}
+
+	filename = sanitizeFilename(filename)
+	if filename == "" {
+		filename = stored.Filename
+	}
+
+	return filename
+}
+
+func sanitizeFilename(filename string) string {
+	invalidChars := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	result := filename
+	for _, char := range invalidChars {
+		result = strings.ReplaceAll(result, char, "_")
+	}
+	result = strings.TrimSpace(result)
+	return result
+}
+
+func (h *Handler) DownloadAll() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		h.mu.RLock()
+		filesToZip := make([]*storedFile, 0, len(h.files))
+		for _, stored := range h.files {
+			filesToZip = append(filesToZip, stored)
+		}
+		h.mu.RUnlock()
+
+		if len(filesToZip) == 0 {
+			http.Error(w, "No files to download", http.StatusNotFound)
+			return
+		}
+
+		zipFilename := h.buildZipFilename(filesToZip)
+
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", zipFilename))
+
+		zipWriter := zip.NewWriter(w)
+		defer zipWriter.Close()
+
+		for _, stored := range filesToZip {
+			file, err := os.Open(stored.Path)
+			if err != nil {
+				log.Printf("Handler.DownloadAll: Failed to open file %s: %v", stored.Path, err)
+				continue
+			}
+
+			downloadFilename := h.buildDownloadFilename(stored)
+			zipEntry, err := zipWriter.Create(downloadFilename)
+			if err != nil {
+				file.Close()
+				log.Printf("Handler.DownloadAll: Failed to create zip entry for %s: %v", downloadFilename, err)
+				continue
+			}
+
+			_, err = io.Copy(zipEntry, file)
+			file.Close()
+			if err != nil {
+				log.Printf("Handler.DownloadAll: Failed to write file %s to zip: %v", downloadFilename, err)
+				continue
+			}
+		}
+
+		log.Printf("Handler.DownloadAll: ZIP file created with %d files", len(filesToZip))
+	}
+}
+
+func (h *Handler) DownloadSelected() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			FileIds []string `json:"fileIds"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			log.Printf("Handler.DownloadSelected: Failed to decode request: %v", err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if len(req.FileIds) == 0 {
+			http.Error(w, "No file IDs provided", http.StatusBadRequest)
+			return
+		}
+
+		h.mu.RLock()
+		filesToZip := make([]*storedFile, 0, len(req.FileIds))
+		for _, fileID := range req.FileIds {
+			if stored, exists := h.files[fileID]; exists {
+				filesToZip = append(filesToZip, stored)
+			}
+		}
+		h.mu.RUnlock()
+
+		if len(filesToZip) == 0 {
+			http.Error(w, "No files found", http.StatusNotFound)
+			return
+		}
+
+		zipFilename := h.buildZipFilename(filesToZip)
+
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", zipFilename))
+
+		zipWriter := zip.NewWriter(w)
+		defer zipWriter.Close()
+
+		for _, stored := range filesToZip {
+			file, err := os.Open(stored.Path)
+			if err != nil {
+				log.Printf("Handler.DownloadSelected: Failed to open file %s: %v", stored.Path, err)
+				continue
+			}
+
+			downloadFilename := h.buildDownloadFilename(stored)
+			zipEntry, err := zipWriter.Create(downloadFilename)
+			if err != nil {
+				file.Close()
+				log.Printf("Handler.DownloadSelected: Failed to create zip entry for %s: %v", downloadFilename, err)
+				continue
+			}
+
+			_, err = io.Copy(zipEntry, file)
+			file.Close()
+			if err != nil {
+				log.Printf("Handler.DownloadSelected: Failed to write file %s to zip: %v", downloadFilename, err)
+				continue
+			}
+		}
+
+		log.Printf("Handler.DownloadSelected: ZIP file created with %d files", len(filesToZip))
+	}
+}
+
+func (h *Handler) buildZipFilename(files []*storedFile) string {
+	if len(files) == 0 {
+		return "all-tracks.zip"
+	}
+
+	artistCount := make(map[string]int)
+	albumCount := make(map[string]int)
+
+	for _, stored := range files {
+		if stored.Metadata != nil {
+			if stored.Metadata.Artist != "" {
+				artistCount[stored.Metadata.Artist]++
+			}
+			if stored.Metadata.Album != "" {
+				albumCount[stored.Metadata.Album]++
+			}
+		}
+	}
+
+	var commonArtist string
+	var commonAlbum string
+	maxArtistCount := 0
+	maxAlbumCount := 0
+
+	for artist, count := range artistCount {
+		if count > maxArtistCount {
+			maxArtistCount = count
+			commonArtist = artist
+		}
+	}
+
+	for album, count := range albumCount {
+		if count > maxAlbumCount {
+			maxAlbumCount = count
+			commonAlbum = album
+		}
+	}
+
+	if commonArtist != "" && commonAlbum != "" && maxArtistCount == len(files) && maxAlbumCount == len(files) {
+		filename := fmt.Sprintf("%s - %s.zip", commonArtist, commonAlbum)
+		return sanitizeFilename(filename)
+	}
+
+	if commonArtist != "" && maxArtistCount == len(files) {
+		filename := fmt.Sprintf("%s.zip", commonArtist)
+		return sanitizeFilename(filename)
+	}
+
+	return "all-tracks.zip"
 }
