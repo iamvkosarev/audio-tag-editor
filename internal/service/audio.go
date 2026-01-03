@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -110,6 +111,16 @@ func (s *AudioService) extractMetadata(metadata tag.Metadata, filename string, s
 
 	track, _ := metadata.Track()
 	result.Track = track
+
+	picture := metadata.Picture()
+	if picture != nil && len(picture.Data) > 0 {
+		mimeType := picture.MIMEType
+		if mimeType == "" {
+			mimeType = "image/jpeg"
+		}
+		base64Data := base64.StdEncoding.EncodeToString(picture.Data)
+		result.CoverArt = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+	}
 
 	return result
 }

@@ -79,6 +79,23 @@ templ Index() {
 					text-overflow: ellipsis;
 					white-space: nowrap;
 				}
+				.cover-art {
+					width: 60px;
+					height: 60px;
+					object-fit: cover;
+					border-radius: 4px;
+				}
+				.cover-art-placeholder {
+					width: 60px;
+					height: 60px;
+					background-color: #e0e0e0;
+					border-radius: 4px;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					color: #999;
+					font-size: 0.7rem;
+				}
 				.empty-state {
 					text-align: center;
 					padding: 3rem;
@@ -142,10 +159,15 @@ templ Index() {
 						return;
 					}
 
-					let html = '<table class="files-table"><thead><tr><th>Title</th><th>Artist</th><th>Album</th><th>Year</th><th>Genre</th><th>Track</th><th>Duration</th><th>Format</th><th>File Size</th></tr></thead><tbody>';
+					let html = '<table class="files-table"><thead><tr><th>Cover</th><th>Title</th><th>Artist</th><th>Album</th><th>Year</th><th>Genre</th><th>Track</th><th>Duration</th><th>Format</th><th>File Size</th></tr></thead><tbody>';
 					
 					files.forEach(file => {
 						html += '<tr>';
+						if (file.coverArt) {
+							html += '<td><img src="' + escapeHtml(file.coverArt) + '" alt="Cover" class="cover-art"></td>';
+						} else {
+							html += '<td><div class="cover-art-placeholder">No Cover</div></td>';
+						}
 						html += '<td>' + escapeHtml(file.title || 'Unknown') + '</td>';
 						html += '<td>' + escapeHtml(file.artist || '-') + '</td>';
 						html += '<td>' + escapeHtml(file.album || '-') + '</td>';
