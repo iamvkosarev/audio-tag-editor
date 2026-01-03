@@ -68,8 +68,13 @@ templ Index() {
 					background-color: #ffc107;
 					color: #333;
 				}
-				.action-btn.edit-btn:hover {
+				.action-btn.edit-btn:hover:not(:disabled) {
 					background-color: #e0a800;
+				}
+				.action-btn.edit-btn:disabled {
+					background-color: #ccc;
+					color: #666;
+					cursor: not-allowed;
 				}
 				.edit-form {
 					display: none;
