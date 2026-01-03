@@ -268,14 +268,19 @@ templ Index() {
 						<label for="editTrack">Track:</label>
 						<input type="number" id="editTrack" placeholder="Enter track number" min="1">
 					</div>
-					<div class="form-group">
-						<label for="editGenre">Genre:</label>
-						<input type="text" id="editGenre" placeholder="Enter genre">
-					</div>
-					<div class="form-actions">
-						<button class="btn-primary" onclick="saveTags()">Save</button>
-						<button class="btn-secondary" onclick="cancelEdit()">Cancel</button>
-					</div>
+				<div class="form-group">
+					<label for="editGenre">Genre:</label>
+					<input type="text" id="editGenre" placeholder="Enter genre">
+				</div>
+				<div class="form-group">
+					<label for="editCoverArt">Cover Art:</label>
+					<input type="file" id="editCoverArt" accept="image/*">
+					<div id="coverPreview" style="margin-top: 0.5rem;"></div>
+				</div>
+				<div class="form-actions">
+					<button class="btn-primary" onclick="saveTags()">Save</button>
+					<button class="btn-secondary" onclick="cancelEdit()">Cancel</button>
+				</div>
 				</div>
 				<div id="filesContainer">
 					<div class="empty-state">No files loaded yet. Click "Load Files" to select audio files.</div>
@@ -537,6 +542,44 @@ templ Index() {
 					displayFiles(currentFiles);
 				}
 
+				let currentCoverArt = null;
+				let coverArtChanged = false;
+
+				document.getElementById('editCoverArt').addEventListener('change', function(e) {
+					const file = e.target.files[0];
+					if (!file) {
+						currentCoverArt = null;
+						coverArtChanged = false;
+						document.getElementById('coverPreview').innerHTML = '';
+						return;
+					}
+
+					if (!file.type.startsWith('image/')) {
+						alert('Please select an image file');
+						e.target.value = '';
+						currentCoverArt = null;
+						coverArtChanged = false;
+						document.getElementById('coverPreview').innerHTML = '';
+						return;
+					}
+
+					const reader = new FileReader();
+					reader.onload = function(event) {
+						currentCoverArt = event.target.result;
+						coverArtChanged = true;
+						const preview = document.getElementById('coverPreview');
+						preview.innerHTML = '<img src="' + currentCoverArt + '" style="max-width: 200px; max-height: 200px; border-radius: 4px; margin-top: 0.5rem;">';
+					};
+					reader.onerror = function() {
+						alert('Failed to read cover art file');
+						e.target.value = '';
+						currentCoverArt = null;
+						coverArtChanged = false;
+						document.getElementById('coverPreview').innerHTML = '';
+					};
+					reader.readAsDataURL(file);
+				});
+
 				function showEditForm() {
 					if (selectedFileIds.size === 0) return;
 					
@@ -549,6 +592,7 @@ templ Index() {
 					const commonYear = getCommonValue(selectedFiles, 'year');
 					const commonTrack = getCommonValue(selectedFiles, 'track');
 					const commonGenre = getCommonValue(selectedFiles, 'genre');
+					const commonCoverArt = getCommonValue(selectedFiles, 'coverArt');
 					
 					document.getElementById('editTitle').value = commonTitle || '';
 					document.getElementById('editArtist').value = commonArtist || '';
@@ -559,6 +603,17 @@ templ Index() {
 					
 					document.getElementById('editTitle').disabled = isMultiple;
 					document.getElementById('editTrack').disabled = isMultiple;
+					
+					currentCoverArt = null;
+					coverArtChanged = false;
+					document.getElementById('editCoverArt').value = '';
+					const preview = document.getElementById('coverPreview');
+					if (commonCoverArt) {
+						currentCoverArt = commonCoverArt;
+						preview.innerHTML = '<img src="' + escapeHtml(commonCoverArt) + '" style="max-width: 200px; max-height: 200px; border-radius: 4px; margin-top: 0.5rem;">';
+					} else {
+						preview.innerHTML = '';
+					}
 					
 					document.getElementById('editForm').classList.add('active');
 				}
@@ -587,12 +642,22 @@ templ Index() {
 					document.getElementById('editGenre').value = '';
 					document.getElementById('editTitle').disabled = false;
 					document.getElementById('editTrack').disabled = false;
+					document.getElementById('editCoverArt').value = '';
+					document.getElementById('coverPreview').innerHTML = '';
+					currentCoverArt = null;
+					coverArtChanged = false;
 				}
 
 				async function saveTags() {
 					if (selectedFileIds.size === 0) return;
 					
 					const selectedFiles = Array.from(selectedFileIds).map(id => fileIdMap.get(id)).filter(f => f);
+					if (selectedFiles.length === 0) {
+						alert('Selected files are no longer available. Please reload the files.');
+						selectedFileIds.clear();
+						displayFiles(currentFiles);
+						return;
+					}
 					const isMultiple = selectedFiles.length > 1;
 					
 					const artist = document.getElementById('editArtist').value.trim();
@@ -617,6 +682,11 @@ templ Index() {
 					};
 					
 					const fieldsToUpdate = new Set(['artist', 'album', 'year', 'genre']);
+					
+					if (coverArtChanged && currentCoverArt !== null) {
+						updates.coverArt = currentCoverArt;
+						fieldsToUpdate.add('coverArt');
+					}
 					
 					if (!isMultiple) {
 						const title = document.getElementById('editTitle').value.trim();
@@ -667,13 +737,21 @@ templ Index() {
 							throw new Error('Invalid JSON response from server: ' + responseText.substring(0, 100));
 						}
 						
-						if (!data || !data.files) {
+						if (!data) {
 							console.error('Invalid response structure:', data);
-							throw new Error('Invalid response from server. Expected data.files, got: ' + JSON.stringify(data));
+							throw new Error('Invalid response from server: ' + JSON.stringify(data));
 						}
 						
-						if (data.files.length === 0) {
-							alert('No files were updated. Make sure the files are MP3 format.');
+						if (data.errors && data.errors.length > 0) {
+							const errorMsg = data.errors.join('\n');
+							alert('Error updating files:\n' + errorMsg);
+							if (!data.files || data.files.length === 0) {
+								return;
+							}
+						}
+						
+						if (!data.files || data.files.length === 0) {
+							alert('No files were updated. The files may have expired or been removed. Please reload the files.');
 							return;
 						}
 						
@@ -735,6 +813,14 @@ templ Index() {
 										currentFiles[index].genre = updatedFile.genre || '';
 										if (!currentFiles[index].changedFields.includes('genre')) {
 											currentFiles[index].changedFields.push('genre');
+										}
+									}
+								}
+								if ('coverArt' in updatedFile) {
+									if (currentFiles[index].coverArt !== (updatedFile.coverArt || '')) {
+										currentFiles[index].coverArt = updatedFile.coverArt || '';
+										if (!currentFiles[index].changedFields.includes('coverArt')) {
+											currentFiles[index].changedFields.push('coverArt');
 										}
 									}
 								}

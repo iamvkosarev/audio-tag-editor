@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 
@@ -136,152 +137,174 @@ func (h *flacHandler) UpdateTags(
 	}
 	originalModTime := stat.ModTime()
 
-	tag, err := audiometa.OpenTag(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to open FLAC tag: %w", err)
-	}
+	onlyCoverArt := coverArt != nil && *coverArt != "" && title == nil && artist == nil && album == nil && year == nil && track == nil && genre == nil
 
-	if title != nil {
-		if *title == "" {
-			tag.SetTitle("")
-		} else {
-			tag.SetTitle(*title)
-		}
-	}
-	if artist != nil {
-		if *artist == "" {
-			tag.SetArtist("")
-		} else {
-			tag.SetArtist(*artist)
-		}
-	}
-	if album != nil {
-		if *album == "" {
-			tag.SetAlbum("")
-		} else {
-			tag.SetAlbum(*album)
-		}
-	}
-	if year != nil {
-		tag.SetYear(fmt.Sprintf("%d", *year))
-	}
-	if genre != nil {
-		if *genre == "" {
-			tag.SetGenre("")
-		} else {
-			tag.SetGenre(*genre)
-		}
-	}
+	var audiometaUsed bool
+	if !onlyCoverArt {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("FLAC UpdateTags: audiometa panicked: %v, falling back to direct FLAC library", r)
+					audiometaUsed = false
+				}
+			}()
 
-	if coverArt != nil && *coverArt != "" {
-		coverData, _, err := h.parseCoverArtData(*coverArt)
-		if err == nil && len(coverData) > 0 {
-			if err := tag.SetAlbumArtFromByteArray(coverData); err != nil {
+			tag, err := audiometa.OpenTag(filePath)
+			if err != nil {
+				return
 			}
-		}
-	}
 
-	if err := os.Chmod(filePath, 0644); err != nil {
-	}
+			audiometaUsed = true
 
-	if err := audiometa.SaveTag(tag); err != nil {
-		if err2 := tag.Save(); err2 != nil {
-			return fmt.Errorf("failed to save FLAC tags with audiometa: SaveTag=%v, Save=%v", err, err2)
-		}
+			if title != nil {
+				if *title == "" {
+					tag.SetTitle("")
+				} else {
+					tag.SetTitle(*title)
+				}
+			}
+			if artist != nil {
+				if *artist == "" {
+					tag.SetArtist("")
+				} else {
+					tag.SetArtist(*artist)
+				}
+			}
+			if album != nil {
+				if *album == "" {
+					tag.SetAlbum("")
+				} else {
+					tag.SetAlbum(*album)
+				}
+			}
+			if year != nil {
+				tag.SetYear(fmt.Sprintf("%d", *year))
+			}
+			if genre != nil {
+				if *genre == "" {
+					tag.SetGenre("")
+				} else {
+					tag.SetGenre(*genre)
+				}
+			}
+
+			if coverArt != nil && *coverArt != "" {
+				coverData, _, err := h.parseCoverArtData(*coverArt)
+				if err == nil && len(coverData) > 0 {
+					if err := tag.SetAlbumArtFromByteArray(coverData); err != nil {
+					}
+				}
+			}
+
+			if err := os.Chmod(filePath, 0644); err != nil {
+			}
+
+			if err := audiometa.SaveTag(tag); err != nil {
+				if err2 := tag.Save(); err2 != nil {
+					audiometaUsed = false
+					return
+				}
+			}
+		}()
 	}
 
 	f, err := flac.ParseFile(filePath)
 	if err != nil {
+		if !audiometaUsed {
+			return fmt.Errorf("failed to parse FLAC file: %w", err)
+		}
 		return nil
 	}
 
-	var vorbisComment *flacvorbis.MetaDataBlockVorbisComment
-	var vorbisIndex int = -1
+	if !audiometaUsed {
+		var vorbisComment *flacvorbis.MetaDataBlockVorbisComment
+		var vorbisIndex int = -1
 
-	for i, meta := range f.Meta {
-		if meta.Type == flac.VorbisComment {
-			vorbisComment, err = flacvorbis.ParseFromMetaDataBlock(*meta)
-			if err != nil {
-				continue
-			}
-			vorbisIndex = i
-			break
-		}
-	}
-
-	if vorbisComment == nil {
-		vorbisComment = flacvorbis.New()
-		vorbisIndex = -1
-	}
-
-	newComments := []string{}
-	for _, comment := range vorbisComment.Comments {
-		keep := true
-		upperComment := strings.ToUpper(comment)
-		if title != nil && strings.HasPrefix(upperComment, "TITLE=") {
-			keep = false
-		}
-		if artist != nil && strings.HasPrefix(upperComment, "ARTIST=") {
-			keep = false
-		}
-		if album != nil && strings.HasPrefix(upperComment, "ALBUM=") {
-			keep = false
-		}
-		if year != nil && strings.HasPrefix(upperComment, "DATE=") {
-			keep = false
-		}
-		if track != nil && strings.HasPrefix(upperComment, "TRACKNUMBER=") {
-			keep = false
-		}
-		if genre != nil && strings.HasPrefix(upperComment, "GENRE=") {
-			keep = false
-		}
-		if keep {
-			newComments = append(newComments, comment)
-		}
-	}
-	vorbisComment.Comments = newComments
-
-	if title != nil {
-		if *title != "" {
-			if err := vorbisComment.Add(flacvorbis.FIELD_TITLE, *title); err != nil {
+		for i, meta := range f.Meta {
+			if meta.Type == flac.VorbisComment {
+				vorbisComment, err = flacvorbis.ParseFromMetaDataBlock(*meta)
+				if err != nil {
+					continue
+				}
+				vorbisIndex = i
+				break
 			}
 		}
-	}
-	if artist != nil {
-		if *artist != "" {
-			if err := vorbisComment.Add(flacvorbis.FIELD_ARTIST, *artist); err != nil {
-			}
-		}
-	}
-	if album != nil {
-		if *album != "" {
-			if err := vorbisComment.Add(flacvorbis.FIELD_ALBUM, *album); err != nil {
-			}
-		}
-	}
-	if year != nil {
-		yearStr := fmt.Sprintf("%d", *year)
-		if err := vorbisComment.Add(flacvorbis.FIELD_DATE, yearStr); err != nil {
-		}
-	}
-	if track != nil {
-		trackStr := fmt.Sprintf("%d", *track)
-		if err := vorbisComment.Add(flacvorbis.FIELD_TRACKNUMBER, trackStr); err != nil {
-		}
-	}
-	if genre != nil {
-		if *genre != "" {
-			if err := vorbisComment.Add(flacvorbis.FIELD_GENRE, *genre); err != nil {
-			}
-		}
-	}
 
-	marshaledBlock := vorbisComment.Marshal()
-	if vorbisIndex >= 0 {
-		f.Meta[vorbisIndex] = &marshaledBlock
-	} else {
-		f.Meta = append(f.Meta, &marshaledBlock)
+		if vorbisComment == nil {
+			vorbisComment = flacvorbis.New()
+			vorbisIndex = -1
+		}
+
+		newComments := []string{}
+		for _, comment := range vorbisComment.Comments {
+			keep := true
+			upperComment := strings.ToUpper(comment)
+			if title != nil && strings.HasPrefix(upperComment, "TITLE=") {
+				keep = false
+			}
+			if artist != nil && strings.HasPrefix(upperComment, "ARTIST=") {
+				keep = false
+			}
+			if album != nil && strings.HasPrefix(upperComment, "ALBUM=") {
+				keep = false
+			}
+			if year != nil && strings.HasPrefix(upperComment, "DATE=") {
+				keep = false
+			}
+			if track != nil && strings.HasPrefix(upperComment, "TRACKNUMBER=") {
+				keep = false
+			}
+			if genre != nil && strings.HasPrefix(upperComment, "GENRE=") {
+				keep = false
+			}
+			if keep {
+				newComments = append(newComments, comment)
+			}
+		}
+		vorbisComment.Comments = newComments
+
+		if title != nil {
+			if *title != "" {
+				if err := vorbisComment.Add(flacvorbis.FIELD_TITLE, *title); err != nil {
+				}
+			}
+		}
+		if artist != nil {
+			if *artist != "" {
+				if err := vorbisComment.Add(flacvorbis.FIELD_ARTIST, *artist); err != nil {
+				}
+			}
+		}
+		if album != nil {
+			if *album != "" {
+				if err := vorbisComment.Add(flacvorbis.FIELD_ALBUM, *album); err != nil {
+				}
+			}
+		}
+		if year != nil {
+			yearStr := fmt.Sprintf("%d", *year)
+			if err := vorbisComment.Add(flacvorbis.FIELD_DATE, yearStr); err != nil {
+			}
+		}
+		if track != nil {
+			trackStr := fmt.Sprintf("%d", *track)
+			if err := vorbisComment.Add(flacvorbis.FIELD_TRACKNUMBER, trackStr); err != nil {
+			}
+		}
+		if genre != nil {
+			if *genre != "" {
+				if err := vorbisComment.Add(flacvorbis.FIELD_GENRE, *genre); err != nil {
+				}
+			}
+		}
+
+		marshaledBlock := vorbisComment.Marshal()
+		if vorbisIndex >= 0 {
+			f.Meta[vorbisIndex] = &marshaledBlock
+		} else {
+			f.Meta = append(f.Meta, &marshaledBlock)
+		}
 	}
 
 	if coverArt != nil && *coverArt != "" {
