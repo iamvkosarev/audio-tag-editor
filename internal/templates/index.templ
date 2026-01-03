@@ -229,6 +229,28 @@ templ Index() {
 					padding: 2rem;
 					color: #666;
 				}
+				.download-spinner {
+					display: none;
+					width: 16px;
+					height: 16px;
+					border: 2px solid #ffffff;
+					border-top: 2px solid transparent;
+					border-radius: 50%;
+					animation: spin 0.8s linear infinite;
+					margin-left: 8px;
+					vertical-align: middle;
+				}
+				.download-spinner.active {
+					display: inline-block;
+				}
+				@keyframes spin {
+					0% { transform: rotate(0deg); }
+					100% { transform: rotate(360deg); }
+				}
+				.download-btn-wrapper {
+					display: inline-flex;
+					align-items: center;
+				}
 			</style>
 		</head>
 		<body>
@@ -243,8 +265,14 @@ templ Index() {
 				<div class="actions-section" id="actionsSection" style="display: none;">
 					<button class="action-btn" id="selectBtn" onclick="toggleSelectMode()">Select</button>
 					<button class="action-btn edit-btn" id="editBtn" onclick="showEditForm()" disabled style="display: none;">Edit</button>
-					<button class="action-btn" id="downloadBtn" onclick="downloadSelectedFiles()" disabled style="display: none;">Download Selected</button>
-					<button class="action-btn" onclick="downloadAllFiles()">Download All</button>
+					<div class="download-btn-wrapper">
+						<button class="action-btn" id="downloadBtn" onclick="downloadSelectedFiles()" disabled style="display: none;">Download Selected</button>
+						<span class="download-spinner" id="downloadSelectedSpinner"></span>
+					</div>
+					<div class="download-btn-wrapper">
+						<button class="action-btn" id="downloadAllBtn" onclick="downloadAllFiles()">Download All</button>
+						<span class="download-spinner" id="downloadAllSpinner"></span>
+					</div>
 				</div>
 				<div class="edit-form" id="editForm">
 					<h3>Edit Tags</h3>
@@ -869,6 +897,11 @@ templ Index() {
 					if (selectedFileIds.size === 0) return;
 					
 					const fileIds = Array.from(selectedFileIds);
+					const spinner = document.getElementById('downloadSelectedSpinner');
+					const downloadBtn = document.getElementById('downloadBtn');
+					
+					spinner.classList.add('active');
+					downloadBtn.disabled = true;
 					
 					try {
 						const response = await fetch('/api/download-selected', {
@@ -880,19 +913,24 @@ templ Index() {
 						});
 						
 						if (!response.ok) {
-							throw new Error('Failed to download selected files');
+							const errorText = await response.text();
+							throw new Error('Failed to download selected files: ' + errorText);
 						}
 						
 						const contentDisposition = response.headers.get('Content-Disposition');
-						let filename = 'selected-tracks.zip';
+						let filename = 'all-tracks.zip';
 						if (contentDisposition) {
-							const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-							if (filenameMatch) {
-								filename = filenameMatch[1];
+							const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+							if (filenameMatch && filenameMatch[1]) {
+								filename = filenameMatch[1].replace(/['"]/g, '');
 							}
 						}
 						
 						const blob = await response.blob();
+						if (blob.size === 0) {
+							throw new Error('Downloaded file is empty');
+						}
+						
 						const url = window.URL.createObjectURL(blob);
 						const a = document.createElement('a');
 						a.href = url;
@@ -903,12 +941,59 @@ templ Index() {
 						window.URL.revokeObjectURL(url);
 					} catch (error) {
 						console.error('Error downloading selected files:', error);
-						alert('Failed to download selected files');
+						alert('Failed to download selected files: ' + error.message);
+					} finally {
+						spinner.classList.remove('active');
+						updateEditButtonState();
 					}
 				}
 
-				function downloadAllFiles() {
-					window.location.href = '/api/download-all';
+				async function downloadAllFiles() {
+					const spinner = document.getElementById('downloadAllSpinner');
+					const downloadBtn = document.getElementById('downloadAllBtn');
+					
+					spinner.classList.add('active');
+					downloadBtn.disabled = true;
+					
+					try {
+						const response = await fetch('/api/download-all', {
+							method: 'GET'
+						});
+						
+						if (!response.ok) {
+							const errorText = await response.text();
+							throw new Error('Failed to download all files: ' + errorText);
+						}
+						
+						const contentDisposition = response.headers.get('Content-Disposition');
+						let filename = 'all-tracks.zip';
+						if (contentDisposition) {
+							const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+							if (filenameMatch && filenameMatch[1]) {
+								filename = filenameMatch[1].replace(/['"]/g, '');
+							}
+						}
+						
+						const blob = await response.blob();
+						if (blob.size === 0) {
+							throw new Error('Downloaded file is empty');
+						}
+						
+						const url = window.URL.createObjectURL(blob);
+						const a = document.createElement('a');
+						a.href = url;
+						a.download = filename;
+						document.body.appendChild(a);
+						a.click();
+						document.body.removeChild(a);
+						window.URL.revokeObjectURL(url);
+					} catch (error) {
+						console.error('Error downloading all files:', error);
+						alert('Failed to download all files: ' + error.message);
+					} finally {
+						spinner.classList.remove('active');
+						downloadBtn.disabled = false;
+					}
 				}
 			</script>
 		</body>
