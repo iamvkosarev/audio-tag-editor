@@ -63,13 +63,14 @@ func (s *AudioService) UpdateTags(
 	title, artist, album *string,
 	year, track *int,
 	genre *string,
+	coverArt *string,
 ) error {
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
 	handler := getFormatHandlerByExtension(ext)
 	if handler == nil {
 		return fmt.Errorf("tag writing not yet supported for format: %s", ext)
 	}
-	return handler.UpdateTags(filePath, title, artist, album, year, track, genre)
+	return handler.UpdateTags(filePath, title, artist, album, year, track, genre, coverArt)
 }
 
 func (s *AudioService) ParseFLACWithAudiometa(filePath string) (*model.FileMetadata, error) {

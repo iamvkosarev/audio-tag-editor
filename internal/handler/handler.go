@@ -20,7 +20,7 @@ import (
 
 type AudioService interface {
 	ParseFile(filePath string) (*model.FileMetadata, error)
-	UpdateTags(filePath string, title, artist, album *string, year, track *int, genre *string) error
+	UpdateTags(filePath string, title, artist, album *string, year, track *int, genre *string, coverArt *string) error
 }
 
 type storedFile struct {
@@ -199,7 +199,7 @@ func (h *Handler) UpdateTags() http.HandlerFunc {
 		for fileID, filePath := range filePaths {
 			log.Printf("Handler.UpdateTags: Processing file: ID=%s, Path=%s", fileID, filePath)
 
-			err := h.audioService.UpdateTags(filePath, req.Title, req.Artist, req.Album, req.Year, req.Track, req.Genre)
+			err := h.audioService.UpdateTags(filePath, req.Title, req.Artist, req.Album, req.Year, req.Track, req.Genre, nil)
 			if err != nil {
 				errMsg := fmt.Sprintf("file %s: %v", fileID, err)
 				log.Printf("Handler.UpdateTags: Error updating tags: %s", errMsg)
@@ -278,7 +278,15 @@ func (h *Handler) Download() http.HandlerFunc {
 			return
 		}
 
-		file, err := os.Open(stored.Path)
+		filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
+		if err != nil {
+			log.Printf("Handler.Download: Failed to prepare file with cover art: %v", err)
+			filePath = stored.Path
+			cleanup = func() {}
+		}
+		defer cleanup()
+
+		file, err := os.Open(filePath)
 		if err != nil {
 			log.Printf("Handler.Download: Failed to open file: %v", err)
 			http.Error(w, "Failed to open file", http.StatusInternalServerError)
@@ -384,6 +392,66 @@ func sanitizeFilename(filename string) string {
 	return result
 }
 
+func (h *Handler) prepareFileWithCoverArt(stored *storedFile) (string, func(), error) {
+	if stored.Metadata == nil || stored.Metadata.CoverArt == "" {
+		return stored.Path, func() {}, nil
+	}
+
+	sourceFile, err := os.Open(stored.Path)
+	if err != nil {
+		return stored.Path, func() {}, fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer sourceFile.Close()
+
+	sourceStat, err := sourceFile.Stat()
+	if err != nil {
+		return stored.Path, func() {}, fmt.Errorf("failed to stat source file: %w", err)
+	}
+	originalModTime := sourceStat.ModTime()
+
+	tempFile, err := os.CreateTemp("", "download-*"+filepath.Ext(stored.Path))
+	if err != nil {
+		return stored.Path, func() {}, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
+
+	destFile, err := os.Create(tempPath)
+	if err != nil {
+		os.Remove(tempPath)
+		return stored.Path, func() {}, fmt.Errorf("failed to create dest file: %w", err)
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		destFile.Close()
+		os.Remove(tempPath)
+		return stored.Path, func() {}, fmt.Errorf("failed to copy file: %w", err)
+	}
+	destFile.Close()
+
+	coverArt := stored.Metadata.CoverArt
+	err = h.audioService.UpdateTags(tempPath, nil, nil, nil, nil, nil, nil, &coverArt)
+	if err != nil {
+		os.Remove(tempPath)
+		log.Printf("Handler.prepareFileWithCoverArt: Failed to embed cover art: %v", err)
+		return stored.Path, func() {}, fmt.Errorf("failed to embed cover art: %w", err)
+	}
+
+	if err := os.Chtimes(tempPath, originalModTime, originalModTime); err != nil {
+		log.Printf("Handler.prepareFileWithCoverArt: Failed to set modification time: %v", err)
+	}
+
+	log.Printf("Handler.prepareFileWithCoverArt: Successfully embedded cover art for %s", stored.Path)
+
+	cleanup := func() {
+		os.Remove(tempPath)
+	}
+
+	return tempPath, cleanup, nil
+}
+
 func (h *Handler) DownloadAll() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -412,22 +480,46 @@ func (h *Handler) DownloadAll() http.HandlerFunc {
 		defer zipWriter.Close()
 
 		for _, stored := range filesToZip {
-			file, err := os.Open(stored.Path)
+			filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
 			if err != nil {
-				log.Printf("Handler.DownloadAll: Failed to open file %s: %v", stored.Path, err)
+				log.Printf("Handler.DownloadAll: Failed to prepare file %s: %v", stored.Path, err)
+				filePath = stored.Path
+				cleanup = func() {}
+			}
+
+			file, err := os.Open(filePath)
+			if err != nil {
+				cleanup()
+				log.Printf("Handler.DownloadAll: Failed to open file %s: %v", filePath, err)
+				continue
+			}
+
+			fileStat, err := file.Stat()
+			if err != nil {
+				file.Close()
+				cleanup()
+				log.Printf("Handler.DownloadAll: Failed to stat file %s: %v", filePath, err)
 				continue
 			}
 
 			downloadFilename := h.buildDownloadFilename(stored)
-			zipEntry, err := zipWriter.Create(downloadFilename)
+			zipHeader := &zip.FileHeader{
+				Name:               downloadFilename,
+				Method:             zip.Deflate,
+				Modified:           fileStat.ModTime(),
+				UncompressedSize64: uint64(fileStat.Size()),
+			}
+			zipEntry, err := zipWriter.CreateHeader(zipHeader)
 			if err != nil {
 				file.Close()
+				cleanup()
 				log.Printf("Handler.DownloadAll: Failed to create zip entry for %s: %v", downloadFilename, err)
 				continue
 			}
 
 			_, err = io.Copy(zipEntry, file)
 			file.Close()
+			cleanup()
 			if err != nil {
 				log.Printf("Handler.DownloadAll: Failed to write file %s to zip: %v", downloadFilename, err)
 				continue
@@ -483,22 +575,46 @@ func (h *Handler) DownloadSelected() http.HandlerFunc {
 		defer zipWriter.Close()
 
 		for _, stored := range filesToZip {
-			file, err := os.Open(stored.Path)
+			filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
 			if err != nil {
-				log.Printf("Handler.DownloadSelected: Failed to open file %s: %v", stored.Path, err)
+				log.Printf("Handler.DownloadSelected: Failed to prepare file %s: %v", stored.Path, err)
+				filePath = stored.Path
+				cleanup = func() {}
+			}
+
+			file, err := os.Open(filePath)
+			if err != nil {
+				cleanup()
+				log.Printf("Handler.DownloadSelected: Failed to open file %s: %v", filePath, err)
+				continue
+			}
+
+			fileStat, err := file.Stat()
+			if err != nil {
+				file.Close()
+				cleanup()
+				log.Printf("Handler.DownloadSelected: Failed to stat file %s: %v", filePath, err)
 				continue
 			}
 
 			downloadFilename := h.buildDownloadFilename(stored)
-			zipEntry, err := zipWriter.Create(downloadFilename)
+			zipHeader := &zip.FileHeader{
+				Name:               downloadFilename,
+				Method:             zip.Deflate,
+				Modified:           fileStat.ModTime(),
+				UncompressedSize64: uint64(fileStat.Size()),
+			}
+			zipEntry, err := zipWriter.CreateHeader(zipHeader)
 			if err != nil {
 				file.Close()
+				cleanup()
 				log.Printf("Handler.DownloadSelected: Failed to create zip entry for %s: %v", downloadFilename, err)
 				continue
 			}
 
 			_, err = io.Copy(zipEntry, file)
 			file.Close()
+			cleanup()
 			if err != nil {
 				log.Printf("Handler.DownloadSelected: Failed to write file %s to zip: %v", downloadFilename, err)
 				continue

@@ -60,6 +60,7 @@ func (h *oggHandler) UpdateTags(
 	title, artist, album *string,
 	year, track *int,
 	genre *string,
+	coverArt *string,
 ) error {
 	return fmt.Errorf("tag writing not yet supported for format: OGG")
 }

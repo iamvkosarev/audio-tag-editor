@@ -1,11 +1,15 @@
 package audio
 
 import (
+	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
+	"github.com/bogem/id3v2/v2"
 	"github.com/dhowden/tag"
+	"github.com/go-flac/flacpicture"
 	"github.com/go-flac/flacvorbis"
 	"github.com/go-flac/go-flac"
 	"github.com/iamvkosarev/music-tag-editor/internal/model"
@@ -124,11 +128,13 @@ func (h *flacHandler) UpdateTags(
 	title, artist, album *string,
 	year, track *int,
 	genre *string,
+	coverArt *string,
 ) error {
-	_, err := os.Stat(filePath)
+	stat, err := os.Stat(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
+	originalModTime := stat.ModTime()
 
 	tag, err := audiometa.OpenTag(filePath)
 	if err != nil {
@@ -167,16 +173,25 @@ func (h *flacHandler) UpdateTags(
 		}
 	}
 
+	if coverArt != nil && *coverArt != "" {
+		coverData, _, err := h.parseCoverArtData(*coverArt)
+		if err == nil && len(coverData) > 0 {
+			if err := tag.SetAlbumArtFromByteArray(coverData); err != nil {
+			}
+		}
+	}
+
 	if err := os.Chmod(filePath, 0644); err != nil {
+	}
+
+	if err := audiometa.SaveTag(tag); err != nil {
+		if err2 := tag.Save(); err2 != nil {
+			return fmt.Errorf("failed to save FLAC tags with audiometa: SaveTag=%v, Save=%v", err, err2)
+		}
 	}
 
 	f, err := flac.ParseFile(filePath)
 	if err != nil {
-		if err := audiometa.SaveTag(tag); err != nil {
-			if err2 := tag.Save(); err2 != nil {
-				return fmt.Errorf("failed to save FLAC tags: SaveTag=%v, Save=%v", err, err2)
-			}
-		}
 		return nil
 	}
 
@@ -269,11 +284,218 @@ func (h *flacHandler) UpdateTags(
 		f.Meta = append(f.Meta, &marshaledBlock)
 	}
 
+	if coverArt != nil && *coverArt != "" {
+		coverData, mimeType, err := h.parseCoverArtData(*coverArt)
+		if err != nil {
+			return fmt.Errorf("failed to parse cover art data: %w", err)
+		}
+
+		if len(coverData) == 0 {
+			return fmt.Errorf("cover art data is empty")
+		}
+
+		pictureBlocksRemoved := false
+		newMeta := make([]*flac.MetaDataBlock, 0, len(f.Meta)+1)
+		for _, meta := range f.Meta {
+			if meta.Type == flac.Picture {
+				pictureBlocksRemoved = true
+				continue
+			}
+			newMeta = append(newMeta, meta)
+		}
+
+		picture, err := flacpicture.NewFromImageData(flacpicture.PictureTypeFrontCover, "Front Cover", coverData, mimeType)
+		if err != nil {
+			return fmt.Errorf("failed to create picture block: %w", err)
+		}
+		pictureBlock := picture.Marshal()
+		newMeta = append(newMeta, &pictureBlock)
+
+		f.Meta = newMeta
+		_ = pictureBlocksRemoved
+	}
+
 	if err := f.Save(filePath); err != nil {
 		return fmt.Errorf("failed to save FLAC file: %w", err)
 	}
 
+	if coverArt != nil && *coverArt != "" {
+		if err := h.addID3v2TagsForMacOS(filePath, title, artist, album, year, track, genre, coverArt); err != nil {
+		}
+	}
+
+	if err := os.Chtimes(filePath, originalModTime, originalModTime); err != nil {
+		return fmt.Errorf("failed to set modification time: %w", err)
+	}
+
 	return nil
+}
+
+func (h *flacHandler) addID3v2TagsForMacOS(
+	filePath string,
+	title, artist, album *string,
+	year, track *int,
+	genre *string,
+	coverArt *string,
+) error {
+	sourceFile, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open source: %w", err)
+	}
+	defer sourceFile.Close()
+
+	sourceStat, err := sourceFile.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat source file: %w", err)
+	}
+	originalModTime := sourceStat.ModTime()
+
+	header := make([]byte, 4)
+	_, err = sourceFile.ReadAt(header, 0)
+	if err != nil {
+		return fmt.Errorf("failed to read header: %w", err)
+	}
+
+	flacStartPos := int64(0)
+	if string(header) == "ID3" {
+		id3v2Tag, err := id3v2.ParseReader(sourceFile, id3v2.Options{Parse: true})
+		if err == nil && id3v2Tag != nil {
+			if tagSize := id3v2Tag.Size(); tagSize > 0 {
+				flacStartPos = int64(tagSize + 10)
+			}
+		}
+		sourceFile.Seek(0, 0)
+	} else if string(header) != "fLaC" {
+		return fmt.Errorf("not a FLAC file")
+	}
+
+	id3v2Tag := id3v2.NewEmptyTag()
+	id3v2Tag.SetVersion(3)
+
+	if title != nil {
+		id3v2Tag.SetTitle(*title)
+	}
+	if artist != nil {
+		id3v2Tag.SetArtist(*artist)
+	}
+	if album != nil {
+		id3v2Tag.SetAlbum(*album)
+	}
+	if year != nil {
+		id3v2Tag.SetYear(fmt.Sprintf("%d", *year))
+	}
+	if track != nil {
+		id3v2Tag.AddTextFrame("TRCK", id3v2.EncodingUTF8, fmt.Sprintf("%d", *track))
+	}
+	if genre != nil {
+		id3v2Tag.SetGenre(*genre)
+	}
+
+	if coverArt != nil && *coverArt != "" {
+		coverData, mimeType, err := h.parseCoverArtData(*coverArt)
+		if err == nil && len(coverData) > 0 {
+			mimeType = h.normalizeMimeTypeForID3v2(mimeType)
+			id3v2Tag.DeleteFrames("APIC")
+			pic := id3v2.PictureFrame{
+				Encoding:    id3v2.EncodingUTF8,
+				MimeType:    mimeType,
+				PictureType: id3v2.PTFrontCover,
+				Description: "Front Cover",
+				Picture:     coverData,
+			}
+			id3v2Tag.AddAttachedPicture(pic)
+		}
+	}
+
+	tempFile, err := os.CreateTemp("", "flac-id3v2-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
+	defer os.Remove(tempPath)
+
+	destFile, err := os.Create(tempPath)
+	if err != nil {
+		return fmt.Errorf("failed to create dest: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := id3v2Tag.WriteTo(destFile); err != nil {
+		return fmt.Errorf("failed to write ID3v2 tag: %w", err)
+	}
+
+	if _, err := sourceFile.Seek(flacStartPos, 0); err != nil {
+		return fmt.Errorf("failed to seek to FLAC start: %w", err)
+	}
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return fmt.Errorf("failed to copy FLAC data: %w", err)
+	}
+
+	destFile.Close()
+	sourceFile.Close()
+
+	if err := os.Rename(tempPath, filePath); err != nil {
+		return fmt.Errorf("failed to replace file: %w", err)
+	}
+
+	if err := os.Chtimes(filePath, originalModTime, originalModTime); err != nil {
+		return fmt.Errorf("failed to set modification time: %w", err)
+	}
+
+	return nil
+}
+
+func (h *flacHandler) normalizeMimeTypeForID3v2(mimeType string) string {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	switch mimeType {
+	case "image/jpg":
+		return "image/jpeg"
+	case "image/png":
+		return "image/png"
+	case "image/gif":
+		return "image/gif"
+	case "image/bmp":
+		return "image/bmp"
+	default:
+		if strings.HasPrefix(mimeType, "image/") {
+			return mimeType
+		}
+		return "image/jpeg"
+	}
+}
+
+func (h *flacHandler) parseCoverArtData(dataURI string) ([]byte, string, error) {
+	if !strings.HasPrefix(dataURI, "data:") {
+		return nil, "", fmt.Errorf("invalid data URI format")
+	}
+
+	parts := strings.SplitN(dataURI, ",", 2)
+	if len(parts) != 2 {
+		return nil, "", fmt.Errorf("invalid data URI format")
+	}
+
+	header := parts[0]
+	data := parts[1]
+
+	mimeType := "image/jpeg"
+	if strings.HasPrefix(header, "data:image/") {
+		mimeParts := strings.Split(header, ";")
+		if len(mimeParts) > 0 {
+			mimePart := strings.TrimPrefix(mimeParts[0], "data:")
+			if mimePart != "" {
+				mimeType = mimePart
+			}
+		}
+	}
+
+	coverData, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to decode base64: %w", err)
+	}
+
+	return coverData, mimeType, nil
 }
 
 func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, error) {

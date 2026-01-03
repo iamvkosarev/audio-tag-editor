@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -274,7 +275,14 @@ func (h *mp3Handler) UpdateTags(
 	title, artist, album *string,
 	year, track *int,
 	genre *string,
+	coverArt *string,
 ) error {
+	stat, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %w", err)
+	}
+	originalModTime := stat.ModTime()
+
 	tagFile, err := id3v2.Open(filePath, id3v2.Options{Parse: true})
 	if err != nil {
 		return fmt.Errorf("failed to open MP3 file: %w", err)
@@ -316,11 +324,83 @@ func (h *mp3Handler) UpdateTags(
 		}
 	}
 
+	if coverArt != nil && *coverArt != "" {
+		tagFile.DeleteFrames("APIC")
+		coverData, mimeType, err := h.parseCoverArtData(*coverArt)
+		if err != nil {
+			return fmt.Errorf("failed to parse cover art data: %w", err)
+		}
+		mimeType = h.normalizeMimeType(mimeType)
+		pic := id3v2.PictureFrame{
+			Encoding:    id3v2.EncodingUTF8,
+			MimeType:    mimeType,
+			PictureType: id3v2.PTFrontCover,
+			Description: "Front Cover",
+			Picture:     coverData,
+		}
+		tagFile.AddAttachedPicture(pic)
+	}
+
 	if err := tagFile.Save(); err != nil {
 		return fmt.Errorf("failed to save tags: %w", err)
 	}
 
+	if err := os.Chtimes(filePath, originalModTime, originalModTime); err != nil {
+		return fmt.Errorf("failed to set modification time: %w", err)
+	}
+
 	return nil
+}
+
+func (h *mp3Handler) parseCoverArtData(dataURI string) ([]byte, string, error) {
+	if !strings.HasPrefix(dataURI, "data:") {
+		return nil, "", fmt.Errorf("invalid data URI format")
+	}
+
+	parts := strings.SplitN(dataURI, ",", 2)
+	if len(parts) != 2 {
+		return nil, "", fmt.Errorf("invalid data URI format")
+	}
+
+	header := parts[0]
+	data := parts[1]
+
+	mimeType := "image/jpeg"
+	if strings.HasPrefix(header, "data:image/") {
+		mimeParts := strings.Split(header, ";")
+		if len(mimeParts) > 0 {
+			mimePart := strings.TrimPrefix(mimeParts[0], "data:")
+			if mimePart != "" {
+				mimeType = mimePart
+			}
+		}
+	}
+
+	coverData, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to decode base64: %w", err)
+	}
+
+	return coverData, mimeType, nil
+}
+
+func (h *mp3Handler) normalizeMimeType(mimeType string) string {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	switch mimeType {
+	case "image/jpg":
+		return "image/jpeg"
+	case "image/png":
+		return "image/png"
+	case "image/gif":
+		return "image/gif"
+	case "image/bmp":
+		return "image/bmp"
+	default:
+		if strings.HasPrefix(mimeType, "image/") {
+			return mimeType
+		}
+		return "image/jpeg"
+	}
 }
 
 func getMP3Handler(ext string) FormatHandler {

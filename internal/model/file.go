@@ -16,11 +16,12 @@ type FileMetadata struct {
 }
 
 type TagUpdateRequest struct {
-	FileIds []string `json:"fileIds"`
-	Title   *string  `json:"title"`
-	Artist  *string  `json:"artist"`
-	Album   *string  `json:"album"`
-	Year    *int     `json:"year"`
-	Genre   *string  `json:"genre"`
-	Track   *int     `json:"track"`
+	FileIds  []string `json:"fileIds"`
+	Title    *string  `json:"title"`
+	Artist   *string  `json:"artist"`
+	Album    *string  `json:"album"`
+	Year     *int     `json:"year"`
+	Genre    *string  `json:"genre"`
+	Track    *int     `json:"track"`
+	CoverArt *string  `json:"coverArt"`
 }
