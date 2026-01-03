@@ -536,6 +536,7 @@ templ Index() {
 					if (selectedFileIds.size === 0) return;
 					
 					const selectedFiles = Array.from(selectedFileIds).map(id => fileIdMap.get(id)).filter(f => f);
+					const isMultiple = selectedFiles.length > 1;
 					
 					const commonTitle = getCommonValue(selectedFiles, 'title');
 					const commonArtist = getCommonValue(selectedFiles, 'artist');
@@ -550,6 +551,9 @@ templ Index() {
 					document.getElementById('editYear').value = (commonYear !== undefined && commonYear !== null) ? commonYear : '';
 					document.getElementById('editTrack').value = (commonTrack !== undefined && commonTrack !== null && commonTrack !== 0) ? commonTrack : '';
 					document.getElementById('editGenre').value = commonGenre || '';
+					
+					document.getElementById('editTitle').disabled = isMultiple;
+					document.getElementById('editTrack').disabled = isMultiple;
 					
 					document.getElementById('editForm').classList.add('active');
 				}
@@ -576,16 +580,19 @@ templ Index() {
 					document.getElementById('editYear').value = '';
 					document.getElementById('editTrack').value = '';
 					document.getElementById('editGenre').value = '';
+					document.getElementById('editTitle').disabled = false;
+					document.getElementById('editTrack').disabled = false;
 				}
 
 				async function saveTags() {
 					if (selectedFileIds.size === 0) return;
 					
-					const title = document.getElementById('editTitle').value.trim();
+					const selectedFiles = Array.from(selectedFileIds).map(id => fileIdMap.get(id)).filter(f => f);
+					const isMultiple = selectedFiles.length > 1;
+					
 					const artist = document.getElementById('editArtist').value.trim();
 					const album = document.getElementById('editAlbum').value.trim();
 					const yearStr = document.getElementById('editYear').value.trim();
-					const trackStr = document.getElementById('editTrack').value.trim();
 					const genre = document.getElementById('editGenre').value.trim();
 					
 					let year = null;
@@ -596,25 +603,33 @@ templ Index() {
 						}
 					}
 					
-					let track = null;
-					if (trackStr !== '') {
-						const trackNum = parseInt(trackStr, 10);
-						if (!isNaN(trackNum) && trackNum > 0) {
-							track = trackNum;
-						}
-					}
-					
 					const updates = {
 						fileIds: Array.from(selectedFileIds),
-						title: title === '' ? null : title,
 						artist: artist === '' ? null : artist,
 						album: album === '' ? null : album,
 						year: year,
-						track: track,
 						genre: genre === '' ? null : genre
 					};
 					
+					const fieldsToUpdate = new Set(['artist', 'album', 'year', 'genre']);
+					
+					if (!isMultiple) {
+						const title = document.getElementById('editTitle').value.trim();
+						const trackStr = document.getElementById('editTrack').value.trim();
+						updates.title = title === '' ? null : title;
+						fieldsToUpdate.add('title');
+						if (trackStr !== '') {
+							const trackNum = parseInt(trackStr, 10);
+							if (!isNaN(trackNum) && trackNum > 0) {
+								updates.track = trackNum;
+								fieldsToUpdate.add('track');
+							}
+						}
+					}
+					
 					console.log('Update payload:', JSON.stringify(updates));
+					console.log('Is multiple:', isMultiple, 'Has track:', 'track' in updates, 'Has title:', 'title' in updates);
+					console.log('Fields to update:', Array.from(fieldsToUpdate));
 					
 					try {
 						console.log('Sending update request:', updates);
@@ -662,13 +677,13 @@ templ Index() {
 							const index = currentFiles.findIndex(f => f.id === updatedFile.id);
 							console.log('Found index:', index, 'for file ID:', updatedFile.id);
 							if (index !== -1) {
-								console.log('Before update - Title:', currentFiles[index].title, 'Artist:', currentFiles[index].artist, 'Album:', currentFiles[index].album, 'Year:', currentFiles[index].year, 'Genre:', currentFiles[index].genre);
+								console.log('Before update - Title:', currentFiles[index].title, 'Artist:', currentFiles[index].artist, 'Album:', currentFiles[index].album, 'Year:', currentFiles[index].year, 'Track:', currentFiles[index].track, 'Genre:', currentFiles[index].genre);
 								
 								if (!currentFiles[index].changedFields) {
 									currentFiles[index].changedFields = [];
 								}
 								
-								if ('title' in updatedFile) {
+								if (!isMultiple && 'title' in updatedFile) {
 									if (currentFiles[index].title !== (updatedFile.title || '')) {
 										currentFiles[index].title = updatedFile.title || '';
 										if (!currentFiles[index].changedFields.includes('title')) {
@@ -701,7 +716,7 @@ templ Index() {
 										}
 									}
 								}
-								if ('track' in updatedFile) {
+								if (!isMultiple && 'track' in updatedFile) {
 									const newTrack = updatedFile.track !== undefined && updatedFile.track !== null ? updatedFile.track : 0;
 									if (currentFiles[index].track !== newTrack) {
 										currentFiles[index].track = newTrack;
