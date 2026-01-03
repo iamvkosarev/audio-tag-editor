@@ -681,6 +681,72 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 		var year int
 		if _, err := fmt.Sscanf(yearStr, "%d", &year); err == nil {
 			result.Year = year
+		} else {
+			dateParts := strings.Split(yearStr, "-")
+			if len(dateParts) > 0 {
+				if _, err := fmt.Sscanf(dateParts[0], "%d", &year); err == nil {
+					result.Year = year
+				}
+			}
+		}
+		log.Printf("ParseWithAudiometa: Extracted year: %d from string: %s", result.Year, yearStr)
+	}
+
+	if result.Year == 0 {
+		fileForYear, err := os.Open(filePath)
+		if err == nil {
+			defer fileForYear.Close()
+			header := make([]byte, 10)
+			_, err = fileForYear.ReadAt(header, 0)
+			if err == nil {
+				flacStartPos := int64(0)
+				if string(header[0:3]) == "ID3" {
+					id3Size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
+					flacStartPos = int64(10 + id3Size)
+				}
+				flacData := make([]byte, stat.Size()-flacStartPos)
+				_, err = fileForYear.ReadAt(flacData, flacStartPos)
+				if err == nil {
+					flacReader := bytes.NewReader(flacData)
+					f, err := flac.ParseMetadata(flacReader)
+					if err == nil {
+						for _, meta := range f.Meta {
+							if meta.Type == flac.VorbisComment {
+								vorbisComment, err := flacvorbis.ParseFromMetaDataBlock(*meta)
+								if err == nil {
+									for _, comment := range vorbisComment.Comments {
+										upperComment := strings.ToUpper(comment)
+										if strings.HasPrefix(upperComment, "DATE=") {
+											parts := strings.SplitN(comment, "=", 2)
+											if len(parts) == 2 {
+												dateStr := parts[1]
+												if dateStr != "" {
+													var year int
+													if _, err := fmt.Sscanf(dateStr, "%d", &year); err == nil {
+														result.Year = year
+														log.Printf("ParseWithAudiometa: Extracted year: %d from Vorbis DATE comment: %s", year, dateStr)
+														break
+													} else {
+														dateParts := strings.Split(dateStr, "-")
+														if len(dateParts) > 0 {
+															if _, err := fmt.Sscanf(dateParts[0], "%d", &year); err == nil {
+																result.Year = year
+																log.Printf("ParseWithAudiometa: Extracted year: %d from Vorbis DATE comment (parsed from date): %s", year, dateStr)
+																break
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+									break
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -815,6 +881,15 @@ func (h *flacHandler) parseFLACWithDirectLibrary(filePath string, stat os.FileIn
 						var year int
 						if _, err := fmt.Sscanf(yearStr, "%d", &year); err == nil {
 							result.Year = year
+							log.Printf("parseFLACWithDirectLibrary: Extracted year: %d from DATE comment: %s", year, yearStr)
+						} else {
+							dateParts := strings.Split(yearStr, "-")
+							if len(dateParts) > 0 {
+								if _, err := fmt.Sscanf(dateParts[0], "%d", &year); err == nil {
+									result.Year = year
+									log.Printf("parseFLACWithDirectLibrary: Extracted year: %d from date string: %s", year, yearStr)
+								}
+							}
 						}
 					}
 				}
