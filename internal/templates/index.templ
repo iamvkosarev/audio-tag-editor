@@ -70,6 +70,35 @@ templ Index() {
 					position: sticky;
 					top: 0;
 				}
+				.files-table th.sortable {
+					cursor: pointer;
+					user-select: none;
+					position: relative;
+					padding-right: 1.5rem;
+				}
+				.files-table th.sortable:hover {
+					background-color: #e9ecef;
+				}
+				.files-table th.sortable .sort-indicator {
+					position: absolute;
+					right: 0.5rem;
+					top: 50%;
+					transform: translateY(-50%);
+					font-size: 0.8rem;
+					color: #007bff;
+				}
+				.files-table th.sortable .sort-indicator::after {
+					content: ' ↕';
+					opacity: 0.3;
+				}
+				.files-table th.sortable.sort-asc .sort-indicator::after {
+					content: ' ↑';
+					opacity: 1;
+				}
+				.files-table th.sortable.sort-desc .sort-indicator::after {
+					content: ' ↓';
+					opacity: 1;
+				}
 				.files-table tr:hover {
 					background-color: #f8f9fa;
 				}
@@ -122,6 +151,9 @@ templ Index() {
 				</div>
 			</div>
 			<script>
+				let currentFiles = [];
+				let sortState = { column: 'track', direction: 'asc' };
+
 				document.getElementById('fileInput').addEventListener('change', async function(e) {
 					const files = e.target.files;
 					if (files.length === 0) return;
@@ -145,11 +177,50 @@ templ Index() {
 						}
 
 						const data = await response.json();
-						displayFiles(data.files);
+						currentFiles = data.files;
+						sortState = { column: 'track', direction: 'asc' };
+						displayFiles(currentFiles);
 					} catch (error) {
 						container.innerHTML = '<div class="empty-state" style="color: red;">Error loading files: ' + error.message + '</div>';
 					}
 				});
+
+				function sortFiles(files, column, direction) {
+					const sorted = [...files];
+					sorted.sort((a, b) => {
+						let aVal = a[column];
+						let bVal = b[column];
+
+						if (aVal === null || aVal === undefined || aVal === '') aVal = '';
+						if (bVal === null || bVal === undefined || bVal === '') bVal = '';
+
+						if (column === 'year' || column === 'track' || column === 'duration' || column === 'size') {
+							aVal = aVal || 0;
+							bVal = bVal || 0;
+							return direction === 'asc' ? aVal - bVal : bVal - aVal;
+						}
+
+						aVal = String(aVal).toLowerCase();
+						bVal = String(bVal).toLowerCase();
+						
+						if (direction === 'asc') {
+							return aVal.localeCompare(bVal);
+						} else {
+							return bVal.localeCompare(aVal);
+						}
+					});
+					return sorted;
+				}
+
+				function handleSort(column) {
+					if (sortState.column === column) {
+						sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+					} else {
+						sortState.column = column;
+						sortState.direction = 'asc';
+					}
+					displayFiles(currentFiles);
+				}
 
 				function displayFiles(files) {
 					const container = document.getElementById('filesContainer');
@@ -159,9 +230,29 @@ templ Index() {
 						return;
 					}
 
-					let html = '<table class="files-table"><thead><tr><th>Cover</th><th>Title</th><th>Artist</th><th>Album</th><th>Year</th><th>Genre</th><th>Track</th><th>Duration</th><th>Format</th><th>File Size</th></tr></thead><tbody>';
+					const sortedFiles = sortFiles(files, sortState.column, sortState.direction);
+
+					const getSortClass = (col) => {
+						if (sortState.column === col) {
+							return sortState.direction === 'asc' ? 'sortable sort-asc' : 'sortable sort-desc';
+						}
+						return 'sortable';
+					};
+
+					let html = '<table class="files-table"><thead><tr>';
+					html += '<th>Cover</th>';
+					html += '<th class="' + getSortClass('title') + '" onclick="handleSort(\'title\')">Title<span class="sort-indicator"></span></th>';
+					html += '<th class="' + getSortClass('artist') + '" onclick="handleSort(\'artist\')">Artist<span class="sort-indicator"></span></th>';
+					html += '<th class="' + getSortClass('album') + '" onclick="handleSort(\'album\')">Album<span class="sort-indicator"></span></th>';
+					html += '<th class="' + getSortClass('year') + '" onclick="handleSort(\'year\')">Year<span class="sort-indicator"></span></th>';
+					html += '<th class="' + getSortClass('genre') + '" onclick="handleSort(\'genre\')">Genre<span class="sort-indicator"></span></th>';
+					html += '<th class="' + getSortClass('track') + '" onclick="handleSort(\'track\')">Track<span class="sort-indicator"></span></th>';
+					html += '<th class="' + getSortClass('duration') + '" onclick="handleSort(\'duration\')">Duration<span class="sort-indicator"></span></th>';
+					html += '<th class="' + getSortClass('format') + '" onclick="handleSort(\'format\')">Format<span class="sort-indicator"></span></th>';
+					html += '<th class="' + getSortClass('size') + '" onclick="handleSort(\'size\')">File Size<span class="sort-indicator"></span></th>';
+					html += '</tr></thead><tbody>';
 					
-					files.forEach(file => {
+					sortedFiles.forEach(file => {
 						html += '<tr>';
 						if (file.coverArt) {
 							html += '<td><img src="' + escapeHtml(file.coverArt) + '" alt="Cover" class="cover-art"></td>';
