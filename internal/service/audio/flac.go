@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -34,18 +35,22 @@ func (h *flacHandler) ExtractDuration(filePath string) (float64, error) {
 	}
 	defer file.Close()
 
-	header := make([]byte, 4)
+	header := make([]byte, 10)
 	_, err = file.ReadAt(header, 0)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read FLAC header: %w", err)
 	}
 
-	if string(header[0:4]) != "fLaC" {
+	flacStartPos := int64(0)
+	if string(header[0:3]) == "ID3" {
+		id3Size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
+		flacStartPos = int64(10 + id3Size)
+	} else if string(header[0:4]) != "fLaC" {
 		return 0, fmt.Errorf("not a valid FLAC file")
 	}
 
 	buffer := make([]byte, 32)
-	_, err = file.ReadAt(buffer, 0)
+	_, err = file.ReadAt(buffer, flacStartPos)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read FLAC buffer: %w", err)
 	}
@@ -71,7 +76,7 @@ func (h *flacHandler) ExtractDuration(filePath string) (float64, error) {
 		streamInfo = buffer[8:26]
 	} else {
 		streamInfo = make([]byte, 18)
-		_, err = file.ReadAt(streamInfo, 8)
+		_, err = file.ReadAt(streamInfo, flacStartPos+8)
 		if err != nil {
 			return 0, fmt.Errorf("failed to read FLAC stream info: %w", err)
 		}
@@ -140,7 +145,7 @@ func (h *flacHandler) UpdateTags(
 	onlyCoverArt := coverArt != nil && *coverArt != "" && title == nil && artist == nil && album == nil && year == nil && track == nil && genre == nil
 
 	var audiometaUsed bool
-	if !onlyCoverArt {
+	if !onlyCoverArt && track == nil {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -208,7 +213,71 @@ func (h *flacHandler) UpdateTags(
 		}()
 	}
 
-	f, err := flac.ParseFile(filePath)
+	file, err := os.Open(filePath)
+	if err != nil {
+		if !audiometaUsed {
+			return fmt.Errorf("failed to open file: %w", err)
+		}
+		return nil
+	}
+
+	header := make([]byte, 10)
+	_, err = file.ReadAt(header, 0)
+	if err != nil {
+		file.Close()
+		if !audiometaUsed {
+			return fmt.Errorf("failed to read header: %w", err)
+		}
+		return nil
+	}
+
+	flacStartPos := int64(0)
+	var id3TagData []byte
+	if string(header[0:3]) == "ID3" {
+		id3Size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
+		flacStartPos = int64(10 + id3Size)
+		log.Printf("FLAC UpdateTags: Found ID3 tag, size: %d, FLAC starts at offset: %d", id3Size, flacStartPos)
+		id3TagData = make([]byte, flacStartPos)
+		_, err = file.ReadAt(id3TagData, 0)
+		if err != nil {
+			file.Close()
+			if !audiometaUsed {
+				return fmt.Errorf("failed to read ID3 tag: %w", err)
+			}
+			return nil
+		}
+	}
+
+	flacData := make([]byte, stat.Size()-flacStartPos)
+	_, err = file.ReadAt(flacData, flacStartPos)
+	file.Close()
+	if err != nil {
+		if !audiometaUsed {
+			return fmt.Errorf("failed to read FLAC data: %w", err)
+		}
+		return nil
+	}
+
+	tempFlacFile, err := os.CreateTemp("", "flac-edit-*")
+	if err != nil {
+		if !audiometaUsed {
+			return fmt.Errorf("failed to create temp FLAC file: %w", err)
+		}
+		return nil
+	}
+	tempFlacPath := tempFlacFile.Name()
+	defer os.Remove(tempFlacPath)
+
+	_, err = tempFlacFile.Write(flacData)
+	tempFlacFile.Close()
+	if err != nil {
+		if !audiometaUsed {
+			return fmt.Errorf("failed to write temp FLAC file: %w", err)
+		}
+		return nil
+	}
+
+	f, err := flac.ParseFile(tempFlacPath)
 	if err != nil {
 		if !audiometaUsed {
 			return fmt.Errorf("failed to parse FLAC file: %w", err)
@@ -236,65 +305,68 @@ func (h *flacHandler) UpdateTags(
 			vorbisIndex = -1
 		}
 
-		newComments := []string{}
-		for _, comment := range vorbisComment.Comments {
-			keep := true
-			upperComment := strings.ToUpper(comment)
-			if title != nil && strings.HasPrefix(upperComment, "TITLE=") {
-				keep = false
+		if !onlyCoverArt {
+			newComments := []string{}
+			for _, comment := range vorbisComment.Comments {
+				keep := true
+				upperComment := strings.ToUpper(comment)
+				if title != nil && strings.HasPrefix(upperComment, "TITLE=") {
+					keep = false
+				}
+				if artist != nil && strings.HasPrefix(upperComment, "ARTIST=") {
+					keep = false
+				}
+				if album != nil && strings.HasPrefix(upperComment, "ALBUM=") {
+					keep = false
+				}
+				if year != nil && strings.HasPrefix(upperComment, "DATE=") {
+					keep = false
+				}
+				if track != nil && strings.HasPrefix(upperComment, "TRACKNUMBER=") {
+					keep = false
+				}
+				if genre != nil && strings.HasPrefix(upperComment, "GENRE=") {
+					keep = false
+				}
+				if keep {
+					newComments = append(newComments, comment)
+				}
 			}
-			if artist != nil && strings.HasPrefix(upperComment, "ARTIST=") {
-				keep = false
-			}
-			if album != nil && strings.HasPrefix(upperComment, "ALBUM=") {
-				keep = false
-			}
-			if year != nil && strings.HasPrefix(upperComment, "DATE=") {
-				keep = false
-			}
-			if track != nil && strings.HasPrefix(upperComment, "TRACKNUMBER=") {
-				keep = false
-			}
-			if genre != nil && strings.HasPrefix(upperComment, "GENRE=") {
-				keep = false
-			}
-			if keep {
-				newComments = append(newComments, comment)
-			}
-		}
-		vorbisComment.Comments = newComments
+			log.Printf("FLAC UpdateTags: Preserving %d comments, year=%v, track=%v", len(newComments), year != nil, track != nil)
+			vorbisComment.Comments = newComments
 
-		if title != nil {
-			if *title != "" {
-				if err := vorbisComment.Add(flacvorbis.FIELD_TITLE, *title); err != nil {
+			if title != nil {
+				if *title != "" {
+					if err := vorbisComment.Add(flacvorbis.FIELD_TITLE, *title); err != nil {
+					}
 				}
 			}
-		}
-		if artist != nil {
-			if *artist != "" {
-				if err := vorbisComment.Add(flacvorbis.FIELD_ARTIST, *artist); err != nil {
+			if artist != nil {
+				if *artist != "" {
+					if err := vorbisComment.Add(flacvorbis.FIELD_ARTIST, *artist); err != nil {
+					}
 				}
 			}
-		}
-		if album != nil {
-			if *album != "" {
-				if err := vorbisComment.Add(flacvorbis.FIELD_ALBUM, *album); err != nil {
+			if album != nil {
+				if *album != "" {
+					if err := vorbisComment.Add(flacvorbis.FIELD_ALBUM, *album); err != nil {
+					}
 				}
 			}
-		}
-		if year != nil {
-			yearStr := fmt.Sprintf("%d", *year)
-			if err := vorbisComment.Add(flacvorbis.FIELD_DATE, yearStr); err != nil {
+			if year != nil {
+				yearStr := fmt.Sprintf("%d", *year)
+				if err := vorbisComment.Add(flacvorbis.FIELD_DATE, yearStr); err != nil {
+				}
 			}
-		}
-		if track != nil {
-			trackStr := fmt.Sprintf("%d", *track)
-			if err := vorbisComment.Add(flacvorbis.FIELD_TRACKNUMBER, trackStr); err != nil {
+			if track != nil {
+				trackStr := fmt.Sprintf("%d", *track)
+				if err := vorbisComment.Add(flacvorbis.FIELD_TRACKNUMBER, trackStr); err != nil {
+				}
 			}
-		}
-		if genre != nil {
-			if *genre != "" {
-				if err := vorbisComment.Add(flacvorbis.FIELD_GENRE, *genre); err != nil {
+			if genre != nil {
+				if *genre != "" {
+					if err := vorbisComment.Add(flacvorbis.FIELD_GENRE, *genre); err != nil {
+					}
 				}
 			}
 		}
@@ -302,8 +374,10 @@ func (h *flacHandler) UpdateTags(
 		marshaledBlock := vorbisComment.Marshal()
 		if vorbisIndex >= 0 {
 			f.Meta[vorbisIndex] = &marshaledBlock
+			log.Printf("FLAC UpdateTags: Updated Vorbis comment at index %d with %d comments", vorbisIndex, len(vorbisComment.Comments))
 		} else {
 			f.Meta = append(f.Meta, &marshaledBlock)
+			log.Printf("FLAC UpdateTags: Added new Vorbis comment block with %d comments", len(vorbisComment.Comments))
 		}
 	}
 
@@ -338,8 +412,44 @@ func (h *flacHandler) UpdateTags(
 		_ = pictureBlocksRemoved
 	}
 
-	if err := f.Save(filePath); err != nil {
+	tempFile := filePath + ".tmp"
+	if err := f.Save(tempFile); err != nil {
 		return fmt.Errorf("failed to save FLAC file: %w", err)
+	}
+
+	if len(id3TagData) > 0 {
+		flacFile, err := os.Open(tempFile)
+		if err != nil {
+			os.Remove(tempFile)
+			return fmt.Errorf("failed to open temp FLAC file: %w", err)
+		}
+		defer flacFile.Close()
+
+		flacStat, err := flacFile.Stat()
+		if err != nil {
+			os.Remove(tempFile)
+			return fmt.Errorf("failed to stat temp FLAC file: %w", err)
+		}
+
+		flacContent := make([]byte, flacStat.Size())
+		_, err = flacFile.ReadAt(flacContent, 0)
+		flacFile.Close()
+		if err != nil {
+			os.Remove(tempFile)
+			return fmt.Errorf("failed to read temp FLAC file: %w", err)
+		}
+
+		finalContent := append(id3TagData, flacContent...)
+		if err := os.WriteFile(filePath, finalContent, 0644); err != nil {
+			os.Remove(tempFile)
+			return fmt.Errorf("failed to write final file: %w", err)
+		}
+		os.Remove(tempFile)
+	} else {
+		if err := os.Rename(tempFile, filePath); err != nil {
+			os.Remove(tempFile)
+			return fmt.Errorf("failed to rename temp file: %w", err)
+		}
 	}
 
 	if coverArt != nil && *coverArt != "" {
@@ -527,25 +637,46 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	flacTag, err := audiometa.OpenTag(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open FLAC tag: %w", err)
+	var flacTag interface{}
+	var audiometaErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("ParseWithAudiometa: audiometa panicked: %v for file: %s", r, filePath)
+				audiometaErr = fmt.Errorf("audiometa panic: %v", r)
+			}
+		}()
+		flacTag, audiometaErr = audiometa.OpenTag(filePath)
+	}()
+	
+	if audiometaErr != nil || flacTag == nil {
+		return h.parseFLACWithDirectLibrary(filePath, stat)
 	}
 
+	type AudioMetaTag interface {
+		Title() string
+		Artist() string
+		Album() string
+		Genre() string
+		Year() string
+		PartOfSet() string
+	}
+	
+	audioTag := flacTag.(AudioMetaTag)
 	result := &model.FileMetadata{
 		Size:   stat.Size(),
 		Format: "FLAC",
-		Title:  flacTag.Title(),
-		Artist: flacTag.Artist(),
-		Album:  flacTag.Album(),
-		Genre:  flacTag.Genre(),
+		Title:  audioTag.Title(),
+		Artist: audioTag.Artist(),
+		Album:  audioTag.Album(),
+		Genre:  audioTag.Genre(),
 	}
 
 	if result.Title == "" {
 		result.Title = stat.Name()
 	}
 
-	yearStr := flacTag.Year()
+	yearStr := audioTag.Year()
 	if yearStr != "" {
 		var year int
 		if _, err := fmt.Sscanf(yearStr, "%d", &year); err == nil {
@@ -564,7 +695,7 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 		}
 	}
 
-	partOfSet := flacTag.PartOfSet()
+	partOfSet := audioTag.PartOfSet()
 	if partOfSet != "" {
 		var disc int
 		if _, err := fmt.Sscanf(partOfSet, "%d", &disc); err == nil {
@@ -574,6 +705,162 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 			if len(parts) > 0 {
 				if _, err := fmt.Sscanf(parts[0], "%d", &disc); err == nil {
 					result.Disc = disc
+				}
+			}
+		}
+	}
+
+	duration, err := h.ExtractDuration(filePath)
+	if err == nil && duration > 0 {
+		result.Duration = duration
+	}
+
+	f, err := flac.ParseFile(filePath)
+	if err == nil {
+		for _, meta := range f.Meta {
+			if meta.Type == flac.Picture {
+				picture, err := flacpicture.ParseFromMetaDataBlock(*meta)
+				if err == nil {
+					if len(picture.ImageData) > 0 {
+						mimeType := picture.MIME
+						if mimeType == "" {
+							mimeType = "image/jpeg"
+						}
+						base64Data := base64.StdEncoding.EncodeToString(picture.ImageData)
+						result.CoverArt = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (h *flacHandler) parseFLACWithDirectLibrary(filePath string, stat os.FileInfo) (*model.FileMetadata, error) {
+	result := &model.FileMetadata{
+		Size:   stat.Size(),
+		Format: "FLAC",
+		Title:  stat.Name(),
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return result, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	header := make([]byte, 10)
+	_, err = file.ReadAt(header, 0)
+	if err != nil {
+		return result, fmt.Errorf("failed to read header: %w", err)
+	}
+
+	flacStartPos := int64(0)
+	if string(header[0:3]) == "ID3" {
+		id3Size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
+		flacStartPos = int64(10 + id3Size)
+		log.Printf("parseFLACWithDirectLibrary: Found ID3 tag, size: %d, FLAC starts at offset: %d", id3Size, flacStartPos)
+	}
+
+	flacData := make([]byte, stat.Size()-flacStartPos)
+	_, err = file.ReadAt(flacData, flacStartPos)
+	if err != nil {
+		return result, fmt.Errorf("failed to read FLAC data: %w", err)
+	}
+
+	flacReader := bytes.NewReader(flacData)
+	f, err := flac.ParseMetadata(flacReader)
+	if err != nil {
+		return result, fmt.Errorf("failed to parse FLAC file: %w", err)
+	}
+
+	var vorbisComment *flacvorbis.MetaDataBlockVorbisComment
+	for _, meta := range f.Meta {
+		if meta.Type == flac.VorbisComment {
+			vorbisComment, err = flacvorbis.ParseFromMetaDataBlock(*meta)
+			if err == nil {
+				break
+			}
+		}
+	}
+
+	if vorbisComment != nil {
+		for _, comment := range vorbisComment.Comments {
+			upperComment := strings.ToUpper(comment)
+			if strings.HasPrefix(upperComment, "TITLE=") {
+				parts := strings.SplitN(comment, "=", 2)
+				if len(parts) == 2 {
+					result.Title = parts[1]
+				}
+				if result.Title == "" {
+					result.Title = stat.Name()
+				}
+			} else if strings.HasPrefix(upperComment, "ARTIST=") {
+				parts := strings.SplitN(comment, "=", 2)
+				if len(parts) == 2 {
+					result.Artist = parts[1]
+				}
+			} else if strings.HasPrefix(upperComment, "ALBUM=") {
+				parts := strings.SplitN(comment, "=", 2)
+				if len(parts) == 2 {
+					result.Album = parts[1]
+				}
+			} else if strings.HasPrefix(upperComment, "DATE=") {
+				parts := strings.SplitN(comment, "=", 2)
+				if len(parts) == 2 {
+					yearStr := parts[1]
+					if yearStr != "" {
+						var year int
+						if _, err := fmt.Sscanf(yearStr, "%d", &year); err == nil {
+							result.Year = year
+						}
+					}
+				}
+			} else if strings.HasPrefix(upperComment, "TRACKNUMBER=") {
+				parts := strings.SplitN(comment, "=", 2)
+				if len(parts) == 2 {
+					trackStr := parts[1]
+					if trackStr != "" {
+						var track int
+						if _, err := fmt.Sscanf(trackStr, "%d", &track); err == nil {
+							result.Track = track
+						}
+					}
+				}
+			} else if strings.HasPrefix(upperComment, "GENRE=") {
+				parts := strings.SplitN(comment, "=", 2)
+				if len(parts) == 2 {
+					result.Genre = parts[1]
+				}
+			} else if strings.HasPrefix(upperComment, "DISCNUMBER=") {
+				parts := strings.SplitN(comment, "=", 2)
+				if len(parts) == 2 {
+					discStr := parts[1]
+					if discStr != "" {
+						var disc int
+						if _, err := fmt.Sscanf(discStr, "%d", &disc); err == nil {
+							result.Disc = disc
+						}
+					}
+				}
+			}
+		}
+	}
+
+	for _, meta := range f.Meta {
+		if meta.Type == flac.Picture {
+			picture, err := flacpicture.ParseFromMetaDataBlock(*meta)
+			if err == nil {
+				if len(picture.ImageData) > 0 {
+					mimeType := picture.MIME
+					if mimeType == "" {
+						mimeType = "image/jpeg"
+					}
+					base64Data := base64.StdEncoding.EncodeToString(picture.ImageData)
+					result.CoverArt = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+					break
 				}
 			}
 		}

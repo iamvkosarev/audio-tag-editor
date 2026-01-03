@@ -3,6 +3,7 @@ package audio
 import (
 	"fmt"
 	"io"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -22,15 +23,19 @@ func (s *AudioService) ParseFile(filePath string) (*model.FileMetadata, error) {
 		return result, err
 	}
 
-	fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
-	if fileExt == "" {
-		fileExt = result.Format
+	formatToUse := result.Format
+	if formatToUse == "" || formatToUse == "UNKNOWN" {
+		formatToUse = detectFormatFromFilePath(filePath)
+		if formatToUse == "" {
+			formatToUse = strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
+		}
+		result.Format = formatToUse
 	}
 
 	var duration float64
 	var durationErr error
 
-	handler := getFormatHandlerByExtension(fileExt)
+	handler := getFormatHandlerByExtension(formatToUse)
 	if handler != nil {
 		duration, durationErr = handler.ExtractDuration(filePath)
 	} else {
@@ -65,11 +70,21 @@ func (s *AudioService) UpdateTags(
 	genre *string,
 	coverArt *string,
 ) error {
-	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
-	handler := getFormatHandlerByExtension(ext)
-	if handler == nil {
-		return fmt.Errorf("tag writing not yet supported for format: %s", ext)
+	detectedFormat := detectFormatFromFilePath(filePath)
+	log.Printf("AudioService.UpdateTags: Detected format: %s for file: %s", detectedFormat, filePath)
+	if detectedFormat == "" {
+		detectedFormat = strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
+		log.Printf("AudioService.UpdateTags: Using extension format: %s for file: %s", detectedFormat, filePath)
 	}
+	if detectedFormat == "" {
+		return fmt.Errorf("could not determine file format for: %s", filePath)
+	}
+	
+	handler := getFormatHandlerByExtension(detectedFormat)
+	if handler == nil {
+		return fmt.Errorf("tag writing not yet supported for format: %s", detectedFormat)
+	}
+	log.Printf("AudioService.UpdateTags: Using handler for format: %s for file: %s", detectedFormat, filePath)
 	return handler.UpdateTags(filePath, title, artist, album, year, track, genre, coverArt)
 }
 
