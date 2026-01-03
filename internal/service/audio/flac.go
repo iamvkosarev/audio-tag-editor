@@ -236,7 +236,6 @@ func (h *flacHandler) UpdateTags(
 	if string(header[0:3]) == "ID3" {
 		id3Size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
 		flacStartPos = int64(10 + id3Size)
-		log.Printf("FLAC UpdateTags: Found ID3 tag, size: %d, FLAC starts at offset: %d", id3Size, flacStartPos)
 		id3TagData = make([]byte, flacStartPos)
 		_, err = file.ReadAt(id3TagData, 0)
 		if err != nil {
@@ -332,7 +331,6 @@ func (h *flacHandler) UpdateTags(
 					newComments = append(newComments, comment)
 				}
 			}
-			log.Printf("FLAC UpdateTags: Preserving %d comments, year=%v, track=%v", len(newComments), year != nil, track != nil)
 			vorbisComment.Comments = newComments
 
 			if title != nil {
@@ -374,10 +372,8 @@ func (h *flacHandler) UpdateTags(
 		marshaledBlock := vorbisComment.Marshal()
 		if vorbisIndex >= 0 {
 			f.Meta[vorbisIndex] = &marshaledBlock
-			log.Printf("FLAC UpdateTags: Updated Vorbis comment at index %d with %d comments", vorbisIndex, len(vorbisComment.Comments))
 		} else {
 			f.Meta = append(f.Meta, &marshaledBlock)
-			log.Printf("FLAC UpdateTags: Added new Vorbis comment block with %d comments", len(vorbisComment.Comments))
 		}
 	}
 
@@ -689,7 +685,6 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 				}
 			}
 		}
-		log.Printf("ParseWithAudiometa: Extracted year: %d from string: %s", result.Year, yearStr)
 	}
 
 	if result.Year == 0 {
@@ -724,14 +719,12 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 													var year int
 													if _, err := fmt.Sscanf(dateStr, "%d", &year); err == nil {
 														result.Year = year
-														log.Printf("ParseWithAudiometa: Extracted year: %d from Vorbis DATE comment: %s", year, dateStr)
 														break
 													} else {
 														dateParts := strings.Split(dateStr, "-")
 														if len(dateParts) > 0 {
 															if _, err := fmt.Sscanf(dateParts[0], "%d", &year); err == nil {
 																result.Year = year
-																log.Printf("ParseWithAudiometa: Extracted year: %d from Vorbis DATE comment (parsed from date): %s", year, dateStr)
 																break
 															}
 														}
@@ -827,7 +820,6 @@ func (h *flacHandler) parseFLACWithDirectLibrary(filePath string, stat os.FileIn
 	if string(header[0:3]) == "ID3" {
 		id3Size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
 		flacStartPos = int64(10 + id3Size)
-		log.Printf("parseFLACWithDirectLibrary: Found ID3 tag, size: %d, FLAC starts at offset: %d", id3Size, flacStartPos)
 	}
 
 	flacData := make([]byte, stat.Size()-flacStartPos)
@@ -881,13 +873,11 @@ func (h *flacHandler) parseFLACWithDirectLibrary(filePath string, stat os.FileIn
 						var year int
 						if _, err := fmt.Sscanf(yearStr, "%d", &year); err == nil {
 							result.Year = year
-							log.Printf("parseFLACWithDirectLibrary: Extracted year: %d from DATE comment: %s", year, yearStr)
 						} else {
 							dateParts := strings.Split(yearStr, "-")
 							if len(dateParts) > 0 {
 								if _, err := fmt.Sscanf(dateParts[0], "%d", &year); err == nil {
 									result.Year = year
-									log.Printf("parseFLACWithDirectLibrary: Extracted year: %d from date string: %s", year, yearStr)
 								}
 							}
 						}

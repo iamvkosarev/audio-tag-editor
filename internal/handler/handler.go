@@ -144,30 +144,18 @@ func (h *Handler) Upload() http.HandlerFunc {
 
 func (h *Handler) UpdateTags() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("Handler.UpdateTags: Request received: Method=%s, Path=%s", r.Method, r.URL.Path)
-
 		if r.Method != http.MethodPost {
-			log.Printf("Handler.UpdateTags: Method not allowed: %s", r.Method)
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
 		var req model.TagUpdateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			log.Printf("Handler.UpdateTags: Failed to decode request body: %v", err)
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf(
-			"Handler.UpdateTags: Request decoded: FileIds=%d, Title=%v, Artist=%v, Album=%v, Year=%v, Track=%v, Genre=%v",
-			len(req.FileIds), req.Title != nil, req.Artist != nil, req.Album != nil, req.Year != nil, req.Track != nil,
-			req.Genre != nil,
-		)
-		log.Printf("Handler.UpdateTags: File IDs: %v", req.FileIds)
-
 		if len(req.FileIds) == 0 {
-			log.Printf("Handler.UpdateTags: No file IDs provided")
 			http.Error(w, "No file IDs provided", http.StatusBadRequest)
 			return
 		}
@@ -175,30 +163,20 @@ func (h *Handler) UpdateTags() http.HandlerFunc {
 		var updatedFiles []model.FileMetadata
 		var errors []string
 
-		log.Printf("Handler.UpdateTags: About to acquire read lock...")
 		h.mu.RLock()
-		log.Printf("Handler.UpdateTags: Read lock acquired, Total stored files: %d", len(h.files))
-		for fileID, stored := range h.files {
-			log.Printf("Handler.UpdateTags: Stored file: ID=%s, Path=%s", fileID, stored.Path)
-		}
-
 		filePaths := make(map[string]string)
 		for _, fileID := range req.FileIds {
 			stored, exists := h.files[fileID]
 			if !exists {
 				errMsg := fmt.Sprintf("file %s not found", fileID)
-				log.Printf("Handler.UpdateTags: %s", errMsg)
 				errors = append(errors, errMsg)
 				continue
 			}
 			filePaths[fileID] = stored.Path
 		}
 		h.mu.RUnlock()
-		log.Printf("Handler.UpdateTags: Read lock released, processing %d files", len(filePaths))
 
 		for fileID, filePath := range filePaths {
-			log.Printf("Handler.UpdateTags: Processing file: ID=%s, Path=%s", fileID, filePath)
-
 			err := h.audioService.UpdateTags(filePath, req.Title, req.Artist, req.Album, req.Year, req.Track, req.Genre, req.CoverArt)
 			if err != nil {
 				errMsg := fmt.Sprintf("file %s: %v", fileID, err)
@@ -206,8 +184,6 @@ func (h *Handler) UpdateTags() http.HandlerFunc {
 				errors = append(errors, errMsg)
 				continue
 			}
-
-			log.Printf("Handler.UpdateTags: Tags updated successfully for file: %s", fileID)
 
 			var metadata *model.FileMetadata
 			var parseErr error
@@ -228,14 +204,7 @@ func (h *Handler) UpdateTags() http.HandlerFunc {
 				stored.Metadata = metadata
 			}
 			h.mu.Unlock()
-
-			log.Printf(
-				"Handler.UpdateTags: File re-parsed successfully: ID=%s, Artist=%s, Album=%s, Genre=%s",
-				fileID, metadata.Artist, metadata.Album, metadata.Genre,
-			)
 		}
-
-		log.Printf("Handler.UpdateTags: Processing complete: Updated=%d, Errors=%d", len(updatedFiles), len(errors))
 
 		w.Header().Set("Content-Type", "application/json")
 		response := map[string]interface{}{
@@ -246,7 +215,6 @@ func (h *Handler) UpdateTags() http.HandlerFunc {
 		}
 		if len(errors) > 0 {
 			response["errors"] = errors
-			log.Printf("Handler.UpdateTags: Errors in response: %v", errors)
 		}
 
 		if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -254,8 +222,6 @@ func (h *Handler) UpdateTags() http.HandlerFunc {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			return
 		}
-
-		log.Printf("Handler.UpdateTags: Response sent successfully: Files=%d", len(updatedFiles))
 	}
 }
 

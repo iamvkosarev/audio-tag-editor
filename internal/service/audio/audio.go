@@ -3,7 +3,6 @@ package audio
 import (
 	"fmt"
 	"io"
-	"log"
 	"path/filepath"
 	"strings"
 
@@ -71,10 +70,8 @@ func (s *AudioService) UpdateTags(
 	coverArt *string,
 ) error {
 	detectedFormat := detectFormatFromFilePath(filePath)
-	log.Printf("AudioService.UpdateTags: Detected format: %s for file: %s", detectedFormat, filePath)
 	if detectedFormat == "" {
 		detectedFormat = strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
-		log.Printf("AudioService.UpdateTags: Using extension format: %s for file: %s", detectedFormat, filePath)
 	}
 	if detectedFormat == "" {
 		return fmt.Errorf("could not determine file format for: %s", filePath)
@@ -84,7 +81,6 @@ func (s *AudioService) UpdateTags(
 	if handler == nil {
 		return fmt.Errorf("tag writing not yet supported for format: %s", detectedFormat)
 	}
-	log.Printf("AudioService.UpdateTags: Using handler for format: %s for file: %s", detectedFormat, filePath)
 	return handler.UpdateTags(filePath, title, artist, album, year, track, genre, coverArt)
 }
 
