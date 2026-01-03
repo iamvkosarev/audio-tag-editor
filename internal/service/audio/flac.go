@@ -327,6 +327,12 @@ func (h *flacHandler) UpdateTags(
 				if genre != nil && strings.HasPrefix(upperComment, "GENRE=") {
 					keep = false
 				}
+				if strings.HasPrefix(upperComment, "DESCRIPTION=") {
+					keep = false
+				}
+				if strings.HasPrefix(upperComment, "REPLAYGAIN_") {
+					keep = false
+				}
 				if keep {
 					newComments = append(newComments, comment)
 				}

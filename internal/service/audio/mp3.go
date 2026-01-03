@@ -341,6 +341,8 @@ func (h *mp3Handler) UpdateTags(
 		tagFile.AddAttachedPicture(pic)
 	}
 
+	tagFile.DeleteFrames("TXXX")
+
 	if err := tagFile.Save(); err != nil {
 		return fmt.Errorf("failed to save tags: %w", err)
 	}
