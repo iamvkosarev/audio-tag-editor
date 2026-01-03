@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/iamvkosarev/music-tag-editor/internal/config"
+	"github.com/iamvkosarev/music-tag-editor/internal/handler"
 	"github.com/iamvkosarev/music-tag-editor/internal/server"
+	"github.com/iamvkosarev/music-tag-editor/internal/service"
 )
 
 type App struct {
@@ -19,7 +21,12 @@ type App struct {
 }
 
 func New(cfg *config.Config) *App {
-	srv := server.New(cfg)
+	audioService := service.NewAudioService()
+
+	h := handler.New(audioService)
+
+	srv := server.New(cfg, h)
+
 	return &App{
 		server: srv,
 		config: cfg,

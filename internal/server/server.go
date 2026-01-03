@@ -13,10 +13,10 @@ type Server struct {
 	config     *config.ServerConfig
 }
 
-func New(cfg *config.Config) *Server {
-	h := handler.New()
+func New(cfg *config.Config, h *handler.Handler) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", h.Index())
+	mux.HandleFunc("/api/upload", h.Upload())
 
 	srv := &http.Server{
 		Addr:         cfg.Server.Address(),
