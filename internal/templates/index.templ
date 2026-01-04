@@ -8,22 +8,87 @@ templ Index() {
 			<meta name="viewport" content="width=device-width, initial-scale=1.0">
 			<title>Music Tag Editor</title>
 			<style>
+				:root {
+					--bg-primary: #1a1a1a;
+					--bg-secondary: #2d2d2d;
+					--bg-tertiary: #3d3d3d;
+					--text-primary: #e0e0e0;
+					--text-secondary: #b0b0b0;
+					--border-color: #404040;
+					--shadow: rgba(0, 0, 0, 0.3);
+					--hover-bg: #3d3d3d;
+					--selected-bg: #2a4a6a;
+					--changed-bg: #4a3a1a;
+				}
+
+				[data-theme="light"] {
+					--bg-primary: #f5f5f5;
+					--bg-secondary: #ffffff;
+					--bg-tertiary: #f8f9fa;
+					--text-primary: #333333;
+					--text-secondary: #666666;
+					--border-color: #dddddd;
+					--shadow: rgba(0, 0, 0, 0.1);
+					--hover-bg: #f8f9fa;
+					--selected-bg: #e7f3ff;
+					--changed-bg: #fff3cd;
+				}
+
+				* {
+					transition: background-color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+				}
+
+				body, h1, .container, .modal-content, .modal-header h3, .form-group label, .form-group input, .empty-state, .loading {
+					transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+				}
+
+				.files-table td, .files-table th {
+					transition: background-color 0.5s ease, border-color 0.5s ease, color 0s;
+					color: var(--text-primary);
+				}
+
 				body {
 					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 					max-width: 1200px;
 					margin: 0 auto;
 					padding: 2rem;
-					background-color: #f5f5f5;
+					background-color: var(--bg-primary);
+					color: var(--text-primary);
 				}
 				.container {
-					background: white;
+					background: var(--bg-secondary);
 					border-radius: 8px;
 					padding: 2rem;
-					box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+					box-shadow: 0 2px 4px var(--shadow);
 				}
 				h1 {
-					color: #333;
+					color: var(--text-primary);
 					margin-top: 0;
+				}
+				.theme-toggle {
+					position: fixed;
+					top: 1rem;
+					right: 1rem;
+					background-color: var(--bg-tertiary);
+					border: 1px solid var(--border-color);
+					border-radius: 50%;
+					width: 48px;
+					height: 48px;
+					cursor: pointer;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					font-size: 1.5rem;
+					z-index: 1000;
+					box-shadow: 0 2px 8px var(--shadow);
+				}
+				.theme-toggle:hover {
+					background-color: var(--hover-bg);
+					transform: scale(1.1);
+				}
+				.theme-toggle:focus {
+					outline: 2px solid #007bff;
+					outline-offset: 2px;
 				}
 				.upload-section {
 					margin: 2rem 0 1rem 0;
@@ -35,7 +100,7 @@ templ Index() {
 					flex-wrap: wrap;
 					position: sticky;
 					top: 0;
-					background-color: white;
+					background-color: var(--bg-secondary);
 					padding: 1rem 0;
 					z-index: 100;
 					margin-top: 0;
@@ -103,23 +168,23 @@ templ Index() {
 					display: flex;
 				}
 				.modal-content {
-					background: white;
+					background: var(--bg-secondary);
 					border-radius: 8px;
 					width: 90%;
 					max-width: 600px;
 					max-height: 90vh;
 					overflow-y: auto;
-					box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+					box-shadow: 0 4px 6px var(--shadow);
 					display: flex;
 					flex-direction: column;
 				}
 				.modal-header {
 					padding: 1.5rem;
-					border-bottom: 1px solid #ddd;
+					border-bottom: 1px solid var(--border-color);
 				}
 				.modal-header h3 {
 					margin: 0;
-					color: #333;
+					color: var(--text-primary);
 				}
 				.modal-body {
 					padding: 1.5rem;
@@ -130,7 +195,7 @@ templ Index() {
 					display: flex;
 					gap: 0.5rem;
 					padding: 1.5rem;
-					border-top: 1px solid #ddd;
+					border-top: 1px solid var(--border-color);
 					justify-content: flex-end;
 				}
 				.form-group {
@@ -140,15 +205,17 @@ templ Index() {
 					display: block;
 					margin-bottom: 0.5rem;
 					font-weight: 600;
-					color: #333;
+					color: var(--text-primary);
 				}
 				.form-group input {
 					width: 100%;
 					padding: 0.5rem;
-					border: 1px solid #ddd;
+					border: 1px solid var(--border-color);
 					border-radius: 4px;
 					font-size: 1rem;
 					box-sizing: border-box;
+					background-color: var(--bg-tertiary);
+					color: var(--text-primary);
 				}
 				.btn-primary {
 					background-color: #007bff;
@@ -188,10 +255,10 @@ templ Index() {
 					outline-offset: 2px;
 				}
 				.files-table tr.selected {
-					background-color: #e7f3ff;
+					background-color: var(--selected-bg);
 				}
 				.changed {
-					background-color: #fff3cd;
+					background-color: var(--changed-bg);
 				}
 				.checkbox-cell {
 					width: 30px;
@@ -209,7 +276,7 @@ templ Index() {
 					overflow-y: auto;
 					overflow-x: auto;
 					margin-top: 0;
-					border: 1px solid #ddd;
+					border: 1px solid var(--border-color);
 					border-radius: 4px;
 				}
 				.files-table {
@@ -222,12 +289,12 @@ templ Index() {
 				.files-table td {
 					padding: 0.5rem;
 					text-align: left;
-					border-bottom: 1px solid #ddd;
+					border-bottom: 1px solid var(--border-color);
 				}
 				.files-table th {
-					background-color: #f8f9fa;
+					background-color: var(--bg-tertiary);
 					font-weight: 600;
-					color: #333;
+					color: var(--text-primary);
 					position: sticky;
 					top: 0;
 					z-index: 10;
@@ -241,7 +308,7 @@ templ Index() {
 					padding-right: 1.5rem;
 				}
 				.files-table th.sortable:hover {
-					background-color: #e9ecef;
+					background-color: var(--hover-bg);
 				}
 				.files-table th.sortable .sort-indicator {
 					position: absolute;
@@ -264,7 +331,7 @@ templ Index() {
 					opacity: 1;
 				}
 				.files-table tr:hover {
-					background-color: #f8f9fa;
+					background-color: var(--hover-bg);
 				}
 				.files-table td {
 					max-width: 150px;
@@ -281,23 +348,23 @@ templ Index() {
 				.cover-art-placeholder {
 					width: 60px;
 					height: 60px;
-					background-color: #e0e0e0;
+					background-color: var(--bg-tertiary);
 					border-radius: 4px;
 					display: flex;
 					align-items: center;
 					justify-content: center;
-					color: #999;
+					color: var(--text-secondary);
 					font-size: 0.7rem;
 				}
 				.empty-state {
 					text-align: center;
 					padding: 3rem;
-					color: #666;
+					color: var(--text-secondary);
 				}
 				.loading {
 					text-align: center;
 					padding: 2rem;
-					color: #666;
+					color: var(--text-secondary);
 				}
 				.download-spinner {
 					display: none;
@@ -347,10 +414,10 @@ templ Index() {
 					position: absolute;
 					top: 100%;
 					left: 0;
-					background: white;
-					border: 1px solid #ddd;
+					background: var(--bg-secondary);
+					border: 1px solid var(--border-color);
 					border-radius: 4px;
-					box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+					box-shadow: 0 2px 8px var(--shadow);
 					min-width: 180px;
 					z-index: 200;
 					margin-top: 0.25rem;
@@ -367,7 +434,7 @@ templ Index() {
 					gap: 0.5rem;
 				}
 				.column-selector-item:hover {
-					background-color: #f8f9fa;
+					background-color: var(--hover-bg);
 				}
 				.column-selector-item input[type="checkbox"] {
 					margin: 0;
@@ -393,6 +460,7 @@ templ Index() {
 			</style>
 		</head>
 		<body>
+			<button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" tabindex="0">🌙</button>
 			<div class="container">
 				<h1>Music Tag Editor</h1>
 				<div class="upload-section">
@@ -420,6 +488,37 @@ templ Index() {
 				</div>
 			</div>
 			<script>
+				function initTheme() {
+					const savedTheme = localStorage.getItem('theme') || 'dark';
+					document.documentElement.setAttribute('data-theme', savedTheme);
+					updateThemeIcon(savedTheme);
+				}
+
+				function toggleTheme() {
+					const currentTheme = document.documentElement.getAttribute('data-theme');
+					const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+					document.documentElement.setAttribute('data-theme', newTheme);
+					localStorage.setItem('theme', newTheme);
+					updateThemeIcon(newTheme);
+				}
+
+				function updateThemeIcon(theme) {
+					const themeToggle = document.getElementById('themeToggle');
+					if (themeToggle) {
+						themeToggle.textContent = theme === 'dark' ? '🌙' : '☀️';
+					}
+				}
+
+				initTheme();
+
+				document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+				document.getElementById('themeToggle').addEventListener('keydown', function(e) {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						toggleTheme();
+					}
+				});
+
 				let currentFiles = [];
 				let sortState = { column: 'track', direction: 'asc' };
 				let selectionMode = false;
