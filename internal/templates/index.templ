@@ -809,14 +809,17 @@ templ Index() {
 
 				document.addEventListener('keydown', function(e) {
 					const modalOverlay = document.getElementById('modalOverlay');
-					if (!modalOverlay.classList.contains('active')) {
-						return;
-					}
+					const isModalActive = modalOverlay.classList.contains('active');
 					
 					if (e.key === 'Escape') {
-						e.preventDefault();
-						cancelEdit();
-					} else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+						if (isModalActive) {
+							e.preventDefault();
+							cancelEdit();
+						} else if (selectionMode) {
+							e.preventDefault();
+							toggleSelectMode();
+						}
+					} else if (isModalActive && e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
 						const activeElement = document.activeElement;
 						if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
 							const inputType = activeElement.type;
