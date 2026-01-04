@@ -14,7 +14,7 @@ import (
 	"github.com/dhowden/tag"
 	"github.com/go-flac/flacvorbis"
 	"github.com/go-flac/go-flac"
-	"github.com/iamvkosarev/music-tag-editor/internal/model"
+	"github.com/iamvkosarev/audio-tag-editor/internal/model"
 	"github.com/tallenh/audiometa"
 )
 
@@ -581,7 +581,12 @@ func (s *AudioService) extractOGGDuration(filePath string) (float64, error) {
 	return 0, fmt.Errorf("could not determine OGG duration")
 }
 
-func (s *AudioService) UpdateTags(filePath string, title, artist, album *string, year, track *int, genre *string) error {
+func (s *AudioService) UpdateTags(
+	filePath string,
+	title, artist, album *string,
+	year, track *int,
+	genre *string,
+) error {
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
 
 	switch ext {
@@ -594,7 +599,12 @@ func (s *AudioService) UpdateTags(filePath string, title, artist, album *string,
 	}
 }
 
-func (s *AudioService) updateMP3Tags(filePath string, title, artist, album *string, year, track *int, genre *string) error {
+func (s *AudioService) updateMP3Tags(
+	filePath string,
+	title, artist, album *string,
+	year, track *int,
+	genre *string,
+) error {
 	tagFile, err := id3v2.Open(filePath, id3v2.Options{Parse: true})
 	if err != nil {
 		return fmt.Errorf("failed to open MP3 file: %w", err)
@@ -643,7 +653,12 @@ func (s *AudioService) updateMP3Tags(filePath string, title, artist, album *stri
 	return nil
 }
 
-func (s *AudioService) updateFLACTags(filePath string, title, artist, album *string, year, track *int, genre *string) error {
+func (s *AudioService) updateFLACTags(
+	filePath string,
+	title, artist, album *string,
+	year, track *int,
+	genre *string,
+) error {
 	log.Printf("AudioService.updateFLACTags: Starting tag update for file: %s", filePath)
 
 	fileInfo, err := os.Stat(filePath)
@@ -659,8 +674,10 @@ func (s *AudioService) updateFLACTags(filePath string, title, artist, album *str
 		return fmt.Errorf("failed to open FLAC tag: %w", err)
 	}
 
-	log.Printf("AudioService.updateFLACTags: Current tags - Title: %s, Artist: %s, Album: %s, Year: %s, Genre: %s",
-		tag.Title(), tag.Artist(), tag.Album(), tag.Year(), tag.Genre())
+	log.Printf(
+		"AudioService.updateFLACTags: Current tags - Title: %s, Artist: %s, Album: %s, Year: %s, Genre: %s",
+		tag.Title(), tag.Artist(), tag.Album(), tag.Year(), tag.Genre(),
+	)
 
 	if title != nil {
 		if *title == "" {

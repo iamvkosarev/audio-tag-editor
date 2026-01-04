@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/dhowden/tag"
-	"github.com/iamvkosarev/music-tag-editor/internal/model"
+	"github.com/iamvkosarev/audio-tag-editor/internal/model"
 )
 
 type AudioService struct{}
@@ -76,7 +76,7 @@ func (s *AudioService) UpdateTags(
 	if detectedFormat == "" {
 		return fmt.Errorf("could not determine file format for: %s", filePath)
 	}
-	
+
 	handler := getFormatHandlerByExtension(detectedFormat)
 	if handler == nil {
 		return fmt.Errorf("tag writing not yet supported for format: %s", detectedFormat)

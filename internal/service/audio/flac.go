@@ -14,7 +14,7 @@ import (
 	"github.com/go-flac/flacpicture"
 	"github.com/go-flac/flacvorbis"
 	"github.com/go-flac/go-flac"
-	"github.com/iamvkosarev/music-tag-editor/internal/model"
+	"github.com/iamvkosarev/audio-tag-editor/internal/model"
 	"github.com/tallenh/audiometa"
 )
 
@@ -403,7 +403,9 @@ func (h *flacHandler) UpdateTags(
 			newMeta = append(newMeta, meta)
 		}
 
-		picture, err := flacpicture.NewFromImageData(flacpicture.PictureTypeFrontCover, "Front Cover", coverData, mimeType)
+		picture, err := flacpicture.NewFromImageData(
+			flacpicture.PictureTypeFrontCover, "Front Cover", coverData, mimeType,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create picture block: %w", err)
 		}
@@ -650,7 +652,7 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 		}()
 		flacTag, audiometaErr = audiometa.OpenTag(filePath)
 	}()
-	
+
 	if audiometaErr != nil || flacTag == nil {
 		return h.parseFLACWithDirectLibrary(filePath, stat)
 	}
@@ -663,7 +665,7 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 		Year() string
 		PartOfSet() string
 	}
-	
+
 	audioTag := flacTag.(AudioMetaTag)
 	result := &model.FileMetadata{
 		Size:   stat.Size(),
@@ -729,7 +731,9 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 													} else {
 														dateParts := strings.Split(dateStr, "-")
 														if len(dateParts) > 0 {
-															if _, err := fmt.Sscanf(dateParts[0], "%d", &year); err == nil {
+															if _, err := fmt.Sscanf(
+																dateParts[0], "%d", &year,
+															); err == nil {
 																result.Year = year
 																break
 															}
@@ -959,4 +963,3 @@ func getFLACHandlerByFileType(fileType tag.FileType) FormatHandler {
 	}
 	return nil
 }
-

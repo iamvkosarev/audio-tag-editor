@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"github.com/iamvkosarev/music-tag-editor/internal/service/audio"
+	"github.com/iamvkosarev/audio-tag-editor/internal/service/audio"
 	"log"
 	"net/http"
 	"os"
@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/iamvkosarev/music-tag-editor/internal/config"
-	"github.com/iamvkosarev/music-tag-editor/internal/handler"
-	"github.com/iamvkosarev/music-tag-editor/internal/server"
+	"github.com/iamvkosarev/audio-tag-editor/internal/config"
+	"github.com/iamvkosarev/audio-tag-editor/internal/handler"
+	"github.com/iamvkosarev/audio-tag-editor/internal/server"
 )
 
 type App struct {

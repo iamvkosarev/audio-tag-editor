@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamvkosarev/music-tag-editor/internal/model"
-	"github.com/iamvkosarev/music-tag-editor/internal/templates"
+	"github.com/iamvkosarev/audio-tag-editor/internal/model"
+	"github.com/iamvkosarev/audio-tag-editor/internal/templates"
 )
 
 type AudioService interface {
@@ -177,7 +177,9 @@ func (h *Handler) UpdateTags() http.HandlerFunc {
 		h.mu.RUnlock()
 
 		for fileID, filePath := range filePaths {
-			err := h.audioService.UpdateTags(filePath, req.Title, req.Artist, req.Album, req.Year, req.Track, req.Genre, req.CoverArt)
+			err := h.audioService.UpdateTags(
+				filePath, req.Title, req.Artist, req.Album, req.Year, req.Track, req.Genre, req.CoverArt,
+			)
 			if err != nil {
 				errMsg := fmt.Sprintf("file %s: %v", fileID, err)
 				log.Printf("Handler.UpdateTags: Error updating tags: %s", errMsg)
@@ -580,7 +582,9 @@ func (h *Handler) DownloadSelected() http.HandlerFunc {
 		for _, stored := range filesToZip {
 			filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
 			if err != nil {
-				log.Printf("Handler.DownloadSelected: Failed to prepare file %s: %v, using original file", stored.Path, err)
+				log.Printf(
+					"Handler.DownloadSelected: Failed to prepare file %s: %v, using original file", stored.Path, err,
+				)
 				filePath = stored.Path
 				cleanup = func() {}
 			}

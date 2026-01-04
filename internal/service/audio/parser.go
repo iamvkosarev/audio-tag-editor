@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/dhowden/tag"
-	"github.com/iamvkosarev/music-tag-editor/internal/model"
+	"github.com/iamvkosarev/audio-tag-editor/internal/model"
 )
 
 func extractMetadata(metadata tag.Metadata, filename string, size int64) *model.FileMetadata {
@@ -82,7 +82,7 @@ func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 	}
 
 	contentFormat, _ := detectFormatFromContent(file)
-	
+
 	detectedFormat := contentFormat
 	if detectedFormat == "" {
 		detectedFormat = detectFormatFromFilePath(filePath)
@@ -90,7 +90,7 @@ func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 	if detectedFormat == "" {
 		detectedFormat = strings.ToUpper(strings.TrimPrefix(filepath.Ext(stat.Name()), "."))
 	}
-	
+
 	if detectedFormat == "FLAC" {
 		handler := getFLACHandler("FLAC")
 		if flacHandler, ok := handler.(*flacHandler); ok {
@@ -99,7 +99,10 @@ func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						log.Printf("parseFileWithTag: audiometa panicked: %v, falling back to tag library for file: %s", r, filePath)
+						log.Printf(
+							"parseFileWithTag: audiometa panicked: %v, falling back to tag library for file: %s", r,
+							filePath,
+						)
 						flacErr = fmt.Errorf("audiometa panic: %v", r)
 					}
 				}()
@@ -110,7 +113,7 @@ func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 			}
 		}
 	}
-	
+
 	file.Seek(0, 0)
 	metadata, err := tag.ReadFrom(file)
 	if err != nil {
@@ -124,30 +127,30 @@ func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 
 	result := extractMetadata(metadata, stat.Name(), stat.Size())
 	tagFormat := getFormat(metadata.FileType())
-	
+
 	if detectedFormat != "" && detectedFormat != "UNKNOWN" {
 		result.Format = detectedFormat
 		return result, nil
 	}
-	
+
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(stat.Name()), "."))
 	if ext != "" {
 		result.Format = ext
 		return result, nil
 	}
-	
+
 	if tagFormat != "UNKNOWN" && tagFormat != "" {
 		result.Format = tagFormat
 		return result, nil
 	}
-	
+
 	result.Format = "UNKNOWN"
 	return result, nil
 }
 
 func parseReaderWithTag(reader io.ReadSeeker, filename string, size int64) (*model.FileMetadata, error) {
 	contentFormat, _ := detectFormatFromReader(reader)
-	
+
 	reader.Seek(0, 0)
 	metadata, err := tag.ReadFrom(reader)
 	if err != nil {
@@ -164,7 +167,7 @@ func parseReaderWithTag(reader io.ReadSeeker, filename string, size int64) (*mod
 	}
 
 	result := extractMetadata(metadata, filename, size)
-	
+
 	detectedFormat := contentFormat
 	if detectedFormat == "" {
 		tagFormat := getFormat(metadata.FileType())
@@ -172,11 +175,11 @@ func parseReaderWithTag(reader io.ReadSeeker, filename string, size int64) (*mod
 			detectedFormat = tagFormat
 		}
 	}
-	
+
 	if detectedFormat == "" {
 		detectedFormat = strings.ToUpper(strings.TrimPrefix(filepath.Ext(filename), "."))
 	}
-	
+
 	result.Format = detectedFormat
 
 	return result, nil
@@ -199,7 +202,7 @@ func detectFormatFromContent(file *os.File) (string, error) {
 	if n >= 10 && string(header[0:3]) == "ID3" {
 		id3Size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
 		flacOffset := 10 + id3Size
-		
+
 		if flacOffset > n {
 			flacHeader := make([]byte, 4)
 			readN, readErr := file.ReadAt(flacHeader, int64(flacOffset))
@@ -249,13 +252,13 @@ func detectFormatFromHeader(header []byte, readLen int) (string, error) {
 	if readLen >= 10 && string(header[0:3]) == "ID3" {
 		id3Size := int(header[6])<<21 | int(header[7])<<14 | int(header[8])<<7 | int(header[9])
 		flacOffset := 10 + id3Size
-		
+
 		if flacOffset+4 <= readLen {
 			if string(header[flacOffset:flacOffset+4]) == "fLaC" {
 				return "FLAC", nil
 			}
 		}
-		
+
 		return "MP3", nil
 	}
 
@@ -281,4 +284,3 @@ func detectFormatFromFilePath(filePath string) string {
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
 	return ext
 }
-

@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/iamvkosarev/music-tag-editor/internal/config"
-	"github.com/iamvkosarev/music-tag-editor/internal/handler"
+	"github.com/iamvkosarev/audio-tag-editor/internal/config"
+	"github.com/iamvkosarev/audio-tag-editor/internal/handler"
 )
 
 type Server struct {

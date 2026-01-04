@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/iamvkosarev/music-tag-editor/internal/app"
-	"github.com/iamvkosarev/music-tag-editor/internal/config"
+	"github.com/iamvkosarev/audio-tag-editor/internal/app"
+	"github.com/iamvkosarev/audio-tag-editor/internal/config"
 )
 
 func main() {
