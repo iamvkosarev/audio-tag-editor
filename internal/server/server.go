@@ -15,12 +15,12 @@ type Server struct {
 
 func New(cfg *config.Config, h *handler.Handler) *Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", h.Index())
-	mux.HandleFunc("/api/upload", h.Upload())
-	mux.HandleFunc("/api/update-tags", h.UpdateTags())
-	mux.HandleFunc("/api/download/", h.Download())
-	mux.HandleFunc("/api/download-all", h.DownloadAll())
-	mux.HandleFunc("/api/download-selected", h.DownloadSelected())
+	mux.HandleFunc("/", h.Index)
+	mux.HandleFunc("POST /api/upload", h.Upload)
+	mux.HandleFunc("POST /api/update-tags", h.UpdateTags)
+	mux.HandleFunc("GET /api/download/", h.Download)
+	mux.HandleFunc("GET /api/download-all", h.DownloadAll)
+	mux.HandleFunc("POST /api/download-selected", h.DownloadSelected)
 
 	srv := &http.Server{
 		Addr:         cfg.Server.Address(),
