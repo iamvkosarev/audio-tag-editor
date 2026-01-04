@@ -57,6 +57,10 @@ templ Index() {
 				.upload-btn:hover, .action-btn:hover {
 					background-color: #0056b3;
 				}
+				.upload-btn:focus, .action-btn:focus {
+					outline: 2px solid #007bff;
+					outline-offset: 2px;
+				}
 				.action-btn:disabled {
 					background-color: #ccc;
 					cursor: not-allowed;
@@ -124,6 +128,10 @@ templ Index() {
 				.btn-primary:hover {
 					background-color: #0056b3;
 				}
+				.btn-primary:focus {
+					outline: 2px solid #007bff;
+					outline-offset: 2px;
+				}
 				.btn-secondary {
 					background-color: #6c757d;
 					color: white;
@@ -135,6 +143,10 @@ templ Index() {
 				.btn-secondary:hover {
 					background-color: #5a6268;
 				}
+				.btn-secondary:focus {
+					outline: 2px solid #6c757d;
+					outline-offset: 2px;
+				}
 				.files-table tr.selected {
 					background-color: #e7f3ff;
 				}
@@ -144,6 +156,13 @@ templ Index() {
 				.checkbox-cell {
 					width: 30px;
 					text-align: center;
+				}
+				.checkbox-cell input[type="checkbox"]:focus {
+					outline: 2px solid #007bff;
+					outline-offset: 2px;
+				}
+				input[type="checkbox"] {
+					cursor: pointer;
 				}
 				.files-table {
 					width: 100%;
@@ -259,18 +278,18 @@ templ Index() {
 				<div class="upload-section">
 					<div class="file-input-wrapper">
 						<input type="file" id="fileInput" class="file-input" multiple accept="audio/*">
-						<button class="upload-btn" onclick="document.getElementById('fileInput').click()">Load Files</button>
+						<button class="upload-btn" tabindex="0" onclick="document.getElementById('fileInput').click()">Load Files</button>
 					</div>
 				</div>
 				<div class="actions-section" id="actionsSection" style="display: none;">
-					<button class="action-btn" id="selectBtn" onclick="toggleSelectMode()">Select</button>
+					<button class="action-btn" id="selectBtn" tabindex="0" onclick="toggleSelectMode()">Select</button>
 					<button class="action-btn edit-btn" id="editBtn" onclick="showEditForm()" disabled style="display: none;">Edit</button>
 					<div class="download-btn-wrapper">
 						<button class="action-btn" id="downloadBtn" onclick="downloadSelectedFiles()" disabled style="display: none;">Download Selected</button>
 						<span class="download-spinner" id="downloadSelectedSpinner"></span>
 					</div>
 					<div class="download-btn-wrapper">
-						<button class="action-btn" id="downloadAllBtn" onclick="downloadAllFiles()">Download All</button>
+						<button class="action-btn" id="downloadAllBtn" tabindex="0" onclick="downloadAllFiles()">Download All</button>
 						<span class="download-spinner" id="downloadAllSpinner"></span>
 					</div>
 				</div>
@@ -306,8 +325,8 @@ templ Index() {
 					<div id="coverPreview" style="margin-top: 0.5rem;"></div>
 				</div>
 				<div class="form-actions">
-					<button class="btn-primary" onclick="saveTags()">Save</button>
-					<button class="btn-secondary" onclick="cancelEdit()">Cancel</button>
+					<button class="btn-primary" tabindex="0" onclick="saveTags()">Save</button>
+					<button class="btn-secondary" tabindex="0" onclick="cancelEdit()">Cancel</button>
 				</div>
 				</div>
 				<div id="filesContainer">
@@ -398,6 +417,91 @@ templ Index() {
 					displayFiles(currentFiles);
 				}
 
+				function handleTableNavigation(event, elementType, rowIndex) {
+					const sortedFiles = sortFiles(currentFiles, sortState.column, sortState.direction);
+					const totalRows = sortedFiles.length;
+					
+					if (elementType === 'checkbox') {
+						if (event.key === 'ArrowDown') {
+							event.preventDefault();
+							if (rowIndex < totalRows - 1) {
+								const nextCheckbox = document.querySelector('.file-checkbox[data-row-index="' + (rowIndex + 1) + '"]');
+								if (nextCheckbox) {
+									nextCheckbox.focus();
+								}
+							}
+						} else if (event.key === 'ArrowUp') {
+							event.preventDefault();
+							if (rowIndex > 0) {
+								const prevCheckbox = document.querySelector('.file-checkbox[data-row-index="' + (rowIndex - 1) + '"]');
+								if (prevCheckbox) {
+									prevCheckbox.focus();
+								}
+							}
+						} else if (event.key === 'ArrowRight') {
+							event.preventDefault();
+							const editBtn = document.querySelector('.file-edit-btn[data-row-index="' + rowIndex + '"]');
+							if (editBtn) {
+								editBtn.focus();
+							}
+						}
+					} else if (elementType === 'edit-btn') {
+						if (event.key === 'ArrowDown') {
+							event.preventDefault();
+							const downloadBtn = document.querySelector('.file-download-btn[data-row-index="' + rowIndex + '"]');
+							if (downloadBtn) {
+								downloadBtn.focus();
+							} else if (rowIndex < totalRows - 1) {
+								const nextEditBtn = document.querySelector('.file-edit-btn[data-row-index="' + (rowIndex + 1) + '"]');
+								if (nextEditBtn) {
+									nextEditBtn.focus();
+								}
+							}
+						} else if (event.key === 'ArrowUp') {
+							event.preventDefault();
+							if (rowIndex > 0) {
+								const prevDownloadBtn = document.querySelector('.file-download-btn[data-row-index="' + (rowIndex - 1) + '"]');
+								if (prevDownloadBtn) {
+									prevDownloadBtn.focus();
+								}
+							}
+						} else if (event.key === 'ArrowLeft') {
+							event.preventDefault();
+							const checkbox = document.querySelector('.file-checkbox[data-row-index="' + rowIndex + '"]');
+							if (checkbox) {
+								checkbox.focus();
+							}
+						}
+					} else if (elementType === 'download-btn') {
+						if (event.key === 'ArrowDown') {
+							event.preventDefault();
+							if (rowIndex < totalRows - 1) {
+								const nextEditBtn = document.querySelector('.file-edit-btn[data-row-index="' + (rowIndex + 1) + '"]');
+								if (nextEditBtn) {
+									nextEditBtn.focus();
+								}
+							}
+						} else if (event.key === 'ArrowUp') {
+							event.preventDefault();
+							const editBtn = document.querySelector('.file-edit-btn[data-row-index="' + rowIndex + '"]');
+							if (editBtn) {
+								editBtn.focus();
+							} else if (rowIndex > 0) {
+								const prevDownloadBtn = document.querySelector('.file-download-btn[data-row-index="' + (rowIndex - 1) + '"]');
+								if (prevDownloadBtn) {
+									prevDownloadBtn.focus();
+								}
+							}
+						} else if (event.key === 'ArrowLeft') {
+							event.preventDefault();
+							const checkbox = document.querySelector('.file-checkbox[data-row-index="' + rowIndex + '"]');
+							if (checkbox) {
+								checkbox.focus();
+							}
+						}
+					}
+				}
+
 				function displayFiles(files) {
 					const container = document.getElementById('filesContainer');
 					
@@ -418,7 +522,7 @@ templ Index() {
 
 					let html = '<table class="files-table"><thead><tr>';
 					if (selectionMode) {
-						html += '<th class="checkbox-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)"></th>';
+						html += '<th class="checkbox-cell"><input type="checkbox" id="selectAll" tabindex="0" onchange="toggleSelectAll(this.checked)"></th>';
 					}
 					html += '<th>Cover</th>';
 					html += '<th class="' + getSortClass('title') + '" onclick="handleSort(\'title\')">Title<span class="sort-indicator"></span></th>';
@@ -436,9 +540,9 @@ templ Index() {
 					sortedFiles.forEach((file, index) => {
 						const fileId = file.id || index;
 						const isSelected = selectedFileIds.has(fileId);
-						html += '<tr data-file-id="' + fileId + '"' + (isSelected ? ' class="selected"' : '') + '>';
+						html += '<tr data-file-id="' + fileId + '" data-row-index="' + index + '"' + (isSelected ? ' class="selected"' : '') + '>';
 						if (selectionMode) {
-							html += '<td class="checkbox-cell"><input type="checkbox" class="file-checkbox" data-file-id="' + fileId + '"' + (isSelected ? ' checked' : '') + ' onchange="toggleFileSelection(\'' + fileId + '\', this.checked)"></td>';
+							html += '<td class="checkbox-cell"><input type="checkbox" class="file-checkbox" data-file-id="' + fileId + '" data-row-index="' + index + '" data-navigation-type="checkbox" tabindex="0" ' + (isSelected ? ' checked' : '') + ' onchange="toggleFileSelection(\'' + fileId + '\', this.checked)" onkeydown="handleTableNavigation(event, \'checkbox\', ' + index + ')"></td>';
 						}
 						if (file.coverArt) {
 							html += '<td><img src="' + escapeHtml(file.coverArt) + '" alt="Cover" class="cover-art"></td>';
@@ -456,8 +560,8 @@ templ Index() {
 						html += '<td>' + escapeHtml(file.format || '-') + '</td>';
 						html += '<td>' + formatFileSize(file.size) + '</td>';
 						html += '<td>';
-						html += '<button class="btn-primary" onclick="editSingleFile(\'' + fileId + '\')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-bottom: 0.25rem; display: block; width: 100%;">Edit</button>';
-						html += '<button class="btn-primary" onclick="downloadFile(\'' + fileId + '\')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; display: block; width: 100%;">Download</button>';
+						html += '<button class="btn-primary file-edit-btn" data-file-id="' + fileId + '" data-row-index="' + index + '" data-navigation-type="edit-btn" tabindex="0" onclick="editSingleFile(\'' + fileId + '\')" onkeydown="handleTableNavigation(event, \'edit-btn\', ' + index + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-bottom: 0.25rem; display: block; width: 100%;">Edit</button>';
+						html += '<button class="btn-primary file-download-btn" data-file-id="' + fileId + '" data-row-index="' + index + '" data-navigation-type="download-btn" tabindex="0" onclick="downloadFile(\'' + fileId + '\')" onkeydown="handleTableNavigation(event, \'download-btn\', ' + index + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; display: block; width: 100%;">Download</button>';
 						html += '</td>';
 						html += '</tr>';
 					});
@@ -477,6 +581,8 @@ templ Index() {
 						btn.textContent = 'Cancel Selection';
 						editBtn.style.display = 'inline-block';
 						downloadBtn.style.display = 'inline-block';
+						editBtn.setAttribute('tabindex', '0');
+						downloadBtn.setAttribute('tabindex', '0');
 					} else {
 						btn.classList.remove('active');
 						btn.textContent = 'Select';
@@ -550,6 +656,16 @@ templ Index() {
 					const hasSelection = selectedFileIds.size > 0;
 					editBtn.disabled = !hasSelection;
 					downloadBtn.disabled = !hasSelection;
+					if (!editBtn.disabled) {
+						editBtn.setAttribute('tabindex', '0');
+					} else {
+						editBtn.removeAttribute('tabindex');
+					}
+					if (!downloadBtn.disabled) {
+						downloadBtn.setAttribute('tabindex', '0');
+					} else {
+						downloadBtn.removeAttribute('tabindex');
+					}
 				}
 
 				function editSingleFile(fileId) {
