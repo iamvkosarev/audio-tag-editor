@@ -80,20 +80,51 @@ templ Index() {
 					color: #666;
 					cursor: not-allowed;
 				}
-				.edit-form {
+				.modal-overlay {
 					display: none;
+					position: fixed;
+					top: 0;
+					left: 0;
+					width: 100%;
+					height: 100%;
+					background-color: rgba(0, 0, 0, 0.5);
+					z-index: 1000;
+					align-items: center;
+					justify-content: center;
+				}
+				.modal-overlay.active {
+					display: flex;
+				}
+				.modal-content {
 					background: white;
-					border: 2px solid #007bff;
 					border-radius: 8px;
+					width: 90%;
+					max-width: 600px;
+					max-height: 90vh;
+					overflow-y: auto;
+					box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+					display: flex;
+					flex-direction: column;
+				}
+				.modal-header {
 					padding: 1.5rem;
-					margin: 1rem 0;
+					border-bottom: 1px solid #ddd;
 				}
-				.edit-form.active {
-					display: block;
-				}
-				.edit-form h3 {
-					margin-top: 0;
+				.modal-header h3 {
+					margin: 0;
 					color: #333;
+				}
+				.modal-body {
+					padding: 1.5rem;
+					flex: 1;
+					overflow-y: auto;
+				}
+				.modal-footer {
+					display: flex;
+					gap: 0.5rem;
+					padding: 1.5rem;
+					border-top: 1px solid #ddd;
+					justify-content: flex-end;
 				}
 				.form-group {
 					margin: 1rem 0;
@@ -111,11 +142,6 @@ templ Index() {
 					border-radius: 4px;
 					font-size: 1rem;
 					box-sizing: border-box;
-				}
-				.form-actions {
-					display: flex;
-					gap: 0.5rem;
-					margin-top: 1rem;
 				}
 				.btn-primary {
 					background-color: #007bff;
@@ -293,42 +319,7 @@ templ Index() {
 						<span class="download-spinner" id="downloadAllSpinner"></span>
 					</div>
 				</div>
-				<div class="edit-form" id="editForm">
-					<h3>Edit Tags</h3>
-					<div class="form-group">
-						<label for="editTitle">Title:</label>
-						<input type="text" id="editTitle" placeholder="Enter track title">
-					</div>
-					<div class="form-group">
-						<label for="editArtist">Artist:</label>
-						<input type="text" id="editArtist" placeholder="Enter artist name">
-					</div>
-					<div class="form-group">
-						<label for="editAlbum">Album:</label>
-						<input type="text" id="editAlbum" placeholder="Enter album name">
-					</div>
-					<div class="form-group">
-						<label for="editYear">Year:</label>
-						<input type="number" id="editYear" placeholder="Enter year" min="1900" max="2100">
-					</div>
-					<div class="form-group">
-						<label for="editTrack">Track:</label>
-						<input type="number" id="editTrack" placeholder="Enter track number" min="1">
-					</div>
-				<div class="form-group">
-					<label for="editGenre">Genre:</label>
-					<input type="text" id="editGenre" placeholder="Enter genre">
-				</div>
-				<div class="form-group">
-					<label for="editCoverArt">Cover Art:</label>
-					<input type="file" id="editCoverArt" accept="image/*">
-					<div id="coverPreview" style="margin-top: 0.5rem;"></div>
-				</div>
-				<div class="form-actions">
-					<button class="btn-primary" tabindex="0" onclick="saveTags()">Save</button>
-					<button class="btn-secondary" tabindex="0" onclick="cancelEdit()">Cancel</button>
-				</div>
-				</div>
+				@EditModal()
 				<div id="filesContainer">
 					<div class="empty-state">No files loaded yet. Click "Load Files" to select audio files.</div>
 				</div>
@@ -587,7 +578,7 @@ templ Index() {
 						btn.classList.remove('active');
 						btn.textContent = 'Select';
 						selectedFileIds.clear();
-						document.getElementById('editForm').classList.remove('active');
+						document.getElementById('modalOverlay').classList.remove('active');
 						editBtn.style.display = 'none';
 						downloadBtn.style.display = 'none';
 					}
@@ -759,7 +750,13 @@ templ Index() {
 						preview.innerHTML = '';
 					}
 					
-					document.getElementById('editForm').classList.add('active');
+					document.getElementById('modalOverlay').classList.add('active');
+				}
+				
+				function closeModalOnOverlay(event) {
+					if (event.target.id === 'modalOverlay') {
+						cancelEdit();
+					}
 				}
 
 				function getCommonValue(files, field) {
@@ -777,7 +774,7 @@ templ Index() {
 				}
 
 				function cancelEdit() {
-					document.getElementById('editForm').classList.remove('active');
+					document.getElementById('modalOverlay').classList.remove('active');
 					document.getElementById('editTitle').value = '';
 					document.getElementById('editArtist').value = '';
 					document.getElementById('editAlbum').value = '';
@@ -793,8 +790,8 @@ templ Index() {
 				}
 
 				document.addEventListener('keydown', function(e) {
-					const editForm = document.getElementById('editForm');
-					if (!editForm.classList.contains('active')) {
+					const modalOverlay = document.getElementById('modalOverlay');
+					if (!modalOverlay.classList.contains('active')) {
 						return;
 					}
 					

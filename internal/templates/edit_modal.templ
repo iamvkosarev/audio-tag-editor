@@ -1,0 +1,47 @@
+package templates
+
+templ EditModal() {
+	<div class="modal-overlay" id="modalOverlay" onclick="closeModalOnOverlay(event)">
+		<div class="modal-content" onclick="event.stopPropagation()">
+			<div class="modal-header">
+				<h3>Edit Tags</h3>
+			</div>
+			<div class="modal-body">
+				<div class="form-group">
+					<label for="editTitle">Title:</label>
+					<input type="text" id="editTitle" placeholder="Enter track title">
+				</div>
+				<div class="form-group">
+					<label for="editArtist">Artist:</label>
+					<input type="text" id="editArtist" placeholder="Enter artist name">
+				</div>
+				<div class="form-group">
+					<label for="editAlbum">Album:</label>
+					<input type="text" id="editAlbum" placeholder="Enter album name">
+				</div>
+				<div class="form-group">
+					<label for="editYear">Year:</label>
+					<input type="number" id="editYear" placeholder="Enter year" min="1900" max="2100">
+				</div>
+				<div class="form-group">
+					<label for="editTrack">Track:</label>
+					<input type="number" id="editTrack" placeholder="Enter track number" min="1">
+				</div>
+				<div class="form-group">
+					<label for="editGenre">Genre:</label>
+					<input type="text" id="editGenre" placeholder="Enter genre">
+				</div>
+				<div class="form-group">
+					<label for="editCoverArt">Cover Art:</label>
+					<input type="file" id="editCoverArt" accept="image/*">
+					<div id="coverPreview" style="margin-top: 0.5rem;"></div>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-primary" tabindex="0" onclick="saveTags()">Save</button>
+				<button class="btn-secondary" tabindex="0" onclick="cancelEdit()">Cancel</button>
+			</div>
+		</div>
+	</div>
+}
+
