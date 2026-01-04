@@ -314,6 +314,75 @@ templ Index() {
 					display: inline-flex;
 					align-items: center;
 				}
+				.column-selector-wrapper {
+					position: relative;
+					display: inline-block;
+				}
+				.column-selector-btn {
+					background-color: #6c757d;
+					color: white;
+					padding: 0.75rem 1.5rem;
+					border: none;
+					border-radius: 4px;
+					cursor: pointer;
+					font-size: 1rem;
+					transition: background-color 0.2s;
+				}
+				.column-selector-btn:hover {
+					background-color: #5a6268;
+				}
+				.column-selector-btn:focus {
+					outline: 2px solid #6c757d;
+					outline-offset: 2px;
+				}
+				.column-selector-dropdown {
+					display: none;
+					position: absolute;
+					top: 100%;
+					left: 0;
+					background: white;
+					border: 1px solid #ddd;
+					border-radius: 4px;
+					box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+					min-width: 180px;
+					z-index: 200;
+					margin-top: 0.25rem;
+					padding: 0.5rem 0;
+				}
+				.column-selector-dropdown.active {
+					display: block;
+				}
+				.column-selector-item {
+					padding: 0.5rem 1rem;
+					cursor: pointer;
+					display: flex;
+					align-items: center;
+					gap: 0.5rem;
+				}
+				.column-selector-item:hover {
+					background-color: #f8f9fa;
+				}
+				.column-selector-item input[type="checkbox"] {
+					margin: 0;
+					cursor: pointer;
+					width: 18px;
+					height: 18px;
+					accent-color: #007bff;
+				}
+				.column-selector-item label {
+					margin: 0;
+					cursor: pointer;
+					flex: 1;
+					font-weight: normal;
+				}
+				.column-selector-item:focus-within {
+					background-color: #e7f3ff;
+					outline: 2px solid #007bff;
+					outline-offset: -2px;
+				}
+				.column-hidden {
+					display: none !important;
+				}
 			</style>
 		</head>
 		<body>
@@ -327,6 +396,7 @@ templ Index() {
 				</div>
 				<div class="actions-section" id="actionsSection" style="display: none;">
 					<button class="action-btn" id="selectBtn" tabindex="0" onclick="toggleSelectMode()">Select</button>
+					@ColumnSelector()
 					<button class="action-btn edit-btn" id="editBtn" onclick="showEditForm()" disabled style="display: none;">Edit</button>
 					<div class="download-btn-wrapper">
 						<button class="action-btn" id="downloadBtn" onclick="downloadSelectedFiles()" disabled style="display: none;">Download Selected</button>
@@ -348,6 +418,18 @@ templ Index() {
 				let selectionMode = false;
 				let selectedFileIds = new Set();
 				let fileIdMap = new Map();
+				let columnVisibility = {
+					cover: true,
+					title: true,
+					artist: true,
+					album: true,
+					year: true,
+					genre: true,
+					track: true,
+					duration: true,
+					format: true,
+					size: true
+				};
 
 				document.getElementById('fileInput').addEventListener('change', async function(e) {
 					const files = e.target.files;
@@ -533,16 +615,36 @@ templ Index() {
 					if (selectionMode) {
 						html += '<th class="checkbox-cell"><input type="checkbox" id="selectAll" tabindex="0" onchange="toggleSelectAll(this.checked)"></th>';
 					}
-					html += '<th>Cover</th>';
-					html += '<th class="' + getSortClass('title') + '" onclick="handleSort(\'title\')">Title<span class="sort-indicator"></span></th>';
-					html += '<th class="' + getSortClass('artist') + '" onclick="handleSort(\'artist\')">Artist<span class="sort-indicator"></span></th>';
-					html += '<th class="' + getSortClass('album') + '" onclick="handleSort(\'album\')">Album<span class="sort-indicator"></span></th>';
-					html += '<th class="' + getSortClass('year') + '" onclick="handleSort(\'year\')">Year<span class="sort-indicator"></span></th>';
-					html += '<th class="' + getSortClass('genre') + '" onclick="handleSort(\'genre\')">Genre<span class="sort-indicator"></span></th>';
-					html += '<th class="' + getSortClass('track') + '" onclick="handleSort(\'track\')">Track<span class="sort-indicator"></span></th>';
-					html += '<th class="' + getSortClass('duration') + '" onclick="handleSort(\'duration\')">Duration<span class="sort-indicator"></span></th>';
-					html += '<th class="' + getSortClass('format') + '" onclick="handleSort(\'format\')">Format<span class="sort-indicator"></span></th>';
-					html += '<th class="' + getSortClass('size') + '" onclick="handleSort(\'size\')">File Size<span class="sort-indicator"></span></th>';
+					if (columnVisibility.cover) {
+						html += '<th data-column="cover">Cover</th>';
+					}
+					if (columnVisibility.title) {
+						html += '<th class="' + getSortClass('title') + '" data-column="title" onclick="handleSort(\'title\')">Title<span class="sort-indicator"></span></th>';
+					}
+					if (columnVisibility.artist) {
+						html += '<th class="' + getSortClass('artist') + '" data-column="artist" onclick="handleSort(\'artist\')">Artist<span class="sort-indicator"></span></th>';
+					}
+					if (columnVisibility.album) {
+						html += '<th class="' + getSortClass('album') + '" data-column="album" onclick="handleSort(\'album\')">Album<span class="sort-indicator"></span></th>';
+					}
+					if (columnVisibility.year) {
+						html += '<th class="' + getSortClass('year') + '" data-column="year" onclick="handleSort(\'year\')">Year<span class="sort-indicator"></span></th>';
+					}
+					if (columnVisibility.genre) {
+						html += '<th class="' + getSortClass('genre') + '" data-column="genre" onclick="handleSort(\'genre\')">Genre<span class="sort-indicator"></span></th>';
+					}
+					if (columnVisibility.track) {
+						html += '<th class="' + getSortClass('track') + '" data-column="track" onclick="handleSort(\'track\')">Track<span class="sort-indicator"></span></th>';
+					}
+					if (columnVisibility.duration) {
+						html += '<th class="' + getSortClass('duration') + '" data-column="duration" onclick="handleSort(\'duration\')">Duration<span class="sort-indicator"></span></th>';
+					}
+					if (columnVisibility.format) {
+						html += '<th class="' + getSortClass('format') + '" data-column="format" onclick="handleSort(\'format\')">Format<span class="sort-indicator"></span></th>';
+					}
+					if (columnVisibility.size) {
+						html += '<th class="' + getSortClass('size') + '" data-column="size" onclick="handleSort(\'size\')">File Size<span class="sort-indicator"></span></th>';
+					}
 					html += '<th></th>';
 					html += '</tr></thead><tbody>';
 					
@@ -553,21 +655,41 @@ templ Index() {
 						if (selectionMode) {
 							html += '<td class="checkbox-cell"><input type="checkbox" class="file-checkbox" data-file-id="' + fileId + '" data-row-index="' + index + '" data-navigation-type="checkbox" tabindex="0" ' + (isSelected ? ' checked' : '') + ' onchange="toggleFileSelection(\'' + fileId + '\', this.checked)" onkeydown="handleTableNavigation(event, \'checkbox\', ' + index + ')"></td>';
 						}
-						if (file.coverArt) {
-							html += '<td><img src="' + escapeHtml(file.coverArt) + '" alt="Cover" class="cover-art"></td>';
-						} else {
-							html += '<td><div class="cover-art-placeholder">No Cover</div></td>';
+						if (columnVisibility.cover) {
+							if (file.coverArt) {
+								html += '<td data-column="cover"><img src="' + escapeHtml(file.coverArt) + '" alt="Cover" class="cover-art"></td>';
+							} else {
+								html += '<td data-column="cover"><div class="cover-art-placeholder">No Cover</div></td>';
+							}
 						}
 						const changedFields = file.changedFields || [];
-						html += '<td' + (changedFields.includes('title') ? ' class="changed"' : '') + '>' + escapeHtml(file.title || 'Unknown') + '</td>';
-						html += '<td' + (changedFields.includes('artist') ? ' class="changed"' : '') + '>' + escapeHtml(file.artist || '-') + '</td>';
-						html += '<td' + (changedFields.includes('album') ? ' class="changed"' : '') + '>' + escapeHtml(file.album || '-') + '</td>';
-						html += '<td' + (changedFields.includes('year') ? ' class="changed"' : '') + '>' + (file.year !== undefined && file.year !== null ? file.year : '-') + '</td>';
-						html += '<td' + (changedFields.includes('genre') ? ' class="changed"' : '') + '>' + escapeHtml(file.genre || '-') + '</td>';
-						html += '<td' + (changedFields.includes('track') ? ' class="changed"' : '') + '>' + (file.track !== undefined && file.track !== null && file.track !== 0 ? file.track : '-') + '</td>';
-						html += '<td>' + formatDuration(file.duration) + '</td>';
-						html += '<td>' + escapeHtml(file.format || '-') + '</td>';
-						html += '<td>' + formatFileSize(file.size) + '</td>';
+						if (columnVisibility.title) {
+							html += '<td data-column="title"' + (changedFields.includes('title') ? ' class="changed"' : '') + '>' + escapeHtml(file.title || 'Unknown') + '</td>';
+						}
+						if (columnVisibility.artist) {
+							html += '<td data-column="artist"' + (changedFields.includes('artist') ? ' class="changed"' : '') + '>' + escapeHtml(file.artist || '-') + '</td>';
+						}
+						if (columnVisibility.album) {
+							html += '<td data-column="album"' + (changedFields.includes('album') ? ' class="changed"' : '') + '>' + escapeHtml(file.album || '-') + '</td>';
+						}
+						if (columnVisibility.year) {
+							html += '<td data-column="year"' + (changedFields.includes('year') ? ' class="changed"' : '') + '>' + (file.year !== undefined && file.year !== null ? file.year : '-') + '</td>';
+						}
+						if (columnVisibility.genre) {
+							html += '<td data-column="genre"' + (changedFields.includes('genre') ? ' class="changed"' : '') + '>' + escapeHtml(file.genre || '-') + '</td>';
+						}
+						if (columnVisibility.track) {
+							html += '<td data-column="track"' + (changedFields.includes('track') ? ' class="changed"' : '') + '>' + (file.track !== undefined && file.track !== null && file.track !== 0 ? file.track : '-') + '</td>';
+						}
+						if (columnVisibility.duration) {
+							html += '<td data-column="duration">' + formatDuration(file.duration) + '</td>';
+						}
+						if (columnVisibility.format) {
+							html += '<td data-column="format">' + escapeHtml(file.format || '-') + '</td>';
+						}
+						if (columnVisibility.size) {
+							html += '<td data-column="size">' + formatFileSize(file.size) + '</td>';
+						}
 						html += '<td>';
 						html += '<button class="btn-primary file-edit-btn" data-file-id="' + fileId + '" data-row-index="' + index + '" data-navigation-type="edit-btn" tabindex="0" onclick="editSingleFile(\'' + fileId + '\')" onkeydown="handleTableNavigation(event, \'edit-btn\', ' + index + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-bottom: 0.25rem; display: block; width: 100%;">Edit</button>';
 						html += '<button class="btn-primary file-download-btn" data-file-id="' + fileId + '" data-row-index="' + index + '" data-navigation-type="download-btn" tabindex="0" onclick="downloadFile(\'' + fileId + '\')" onkeydown="handleTableNavigation(event, \'download-btn\', ' + index + ')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; display: block; width: 100%;">Download</button>';
@@ -1151,6 +1273,79 @@ templ Index() {
 						downloadBtn.disabled = false;
 					}
 				}
+
+				function toggleColumnSelector() {
+					const dropdown = document.getElementById('columnSelectorDropdown');
+					const isActive = dropdown.classList.contains('active');
+					if (isActive) {
+						dropdown.classList.remove('active');
+					} else {
+						dropdown.classList.add('active');
+						const firstItem = dropdown.querySelector('.column-selector-item[data-item-index="0"]');
+						if (firstItem) {
+							setTimeout(() => firstItem.focus(), 0);
+						}
+					}
+				}
+
+				function toggleColumnVisibility(column, visible) {
+					columnVisibility[column] = visible;
+					displayFiles(currentFiles);
+				}
+
+				function handleColumnSelectorNavigation(event, currentIndex) {
+					const dropdown = document.getElementById('columnSelectorDropdown');
+					if (!dropdown) return;
+
+					const items = dropdown.querySelectorAll('.column-selector-item');
+					const totalItems = items.length;
+
+					if (event.key === 'ArrowDown') {
+						event.preventDefault();
+						const nextIndex = (currentIndex + 1) % totalItems;
+						const nextItem = dropdown.querySelector('.column-selector-item[data-item-index="' + nextIndex + '"]');
+						if (nextItem) {
+							nextItem.focus();
+						}
+					} else if (event.key === 'ArrowUp') {
+						event.preventDefault();
+						const prevIndex = (currentIndex - 1 + totalItems) % totalItems;
+						const prevItem = dropdown.querySelector('.column-selector-item[data-item-index="' + prevIndex + '"]');
+						if (prevItem) {
+							prevItem.focus();
+						}
+					} else if (event.key === 'Enter' || event.key === ' ') {
+						event.preventDefault();
+						const checkbox = event.currentTarget.querySelector('input[type="checkbox"]');
+						if (checkbox) {
+							checkbox.checked = !checkbox.checked;
+							const column = checkbox.getAttribute('data-column');
+							toggleColumnVisibility(column, checkbox.checked);
+						}
+					} else if (event.key === 'Escape') {
+						event.preventDefault();
+						dropdown.classList.remove('active');
+						const btn = document.getElementById('columnSelectorBtn');
+						if (btn) {
+							btn.focus();
+						}
+					}
+				}
+
+				document.getElementById('columnSelectorBtn').addEventListener('keydown', function(event) {
+					if (event.key === 'Enter' || event.key === ' ') {
+						event.preventDefault();
+						toggleColumnSelector();
+					}
+				});
+
+				document.addEventListener('click', function(event) {
+					const dropdown = document.getElementById('columnSelectorDropdown');
+					const btn = document.getElementById('columnSelectorBtn');
+					if (dropdown && btn && !dropdown.contains(event.target) && !btn.contains(event.target)) {
+						dropdown.classList.remove('active');
+					}
+				});
 			</script>
 		</body>
 	</html>
