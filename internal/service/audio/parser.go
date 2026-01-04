@@ -72,7 +72,7 @@ func getFormat(fileType tag.FileType) string {
 func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 	file, err := openFile(filePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open FLAC file: %w", err)
 	}
 	defer file.Close()
 
@@ -114,7 +114,10 @@ func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 		}
 	}
 
-	file.Seek(0, 0)
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to rewind file: %w", err)
+	}
 	metadata, err := tag.ReadFrom(file)
 	if err != nil {
 		return &model.FileMetadata{
@@ -151,7 +154,10 @@ func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 func parseReaderWithTag(reader io.ReadSeeker, filename string, size int64) (*model.FileMetadata, error) {
 	contentFormat, _ := detectFormatFromReader(reader)
 
-	reader.Seek(0, 0)
+	_, err := reader.Seek(0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek to start of file: %w", err)
+	}
 	metadata, err := tag.ReadFrom(reader)
 	if err != nil {
 		detectedFormat := contentFormat
@@ -219,7 +225,10 @@ func detectFormatFromContent(file *os.File) (string, error) {
 	}
 
 	format, err := detectFormatFromHeader(header, n)
-	return format, err
+	if err != nil {
+		return "", fmt.Errorf("failed to detect audio format: %w", err)
+	}
+	return format, nil
 }
 
 func detectFormatFromReader(reader io.ReadSeeker) (string, error) {

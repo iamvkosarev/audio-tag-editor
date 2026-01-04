@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"github.com/iamvkosarev/audio-tag-editor/internal/service/audio"
 	"log"
 	"net/http"
@@ -35,7 +36,7 @@ func New(cfg *config.Config) *App {
 
 func (a *App) Run() {
 	go func() {
-		if err := a.server.Start(); err != nil && err != http.ErrServerClosed {
+		if err := a.server.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("failed to start server: %v", err)
 		}
 	}()

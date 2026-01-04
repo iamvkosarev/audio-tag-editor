@@ -55,13 +55,7 @@ func (h *oggHandler) ExtractDuration(filePath string) (float64, error) {
 	return 0, fmt.Errorf("could not determine OGG duration")
 }
 
-func (h *oggHandler) UpdateTags(
-	filePath string,
-	title, artist, album *string,
-	year, track *int,
-	genre *string,
-	coverArt *string,
-) error {
+func (h *oggHandler) UpdateTags(string, *string, *string, *string, *int, *int, *string, *string) error {
 	return fmt.Errorf("tag writing not yet supported for format: OGG")
 }
 
@@ -80,4 +74,3 @@ func getOGGHandlerByFileType(fileType tag.FileType) FormatHandler {
 	}
 	return nil
 }
-

@@ -19,7 +19,7 @@ func NewAudioService() *AudioService {
 func (s *AudioService) ParseFile(filePath string) (*model.FileMetadata, error) {
 	result, err := parseFileWithTag(filePath)
 	if err != nil {
-		return result, err
+		return result, fmt.Errorf("failed to parse file: %w", err)
 	}
 
 	formatToUse := result.Format

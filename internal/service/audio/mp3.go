@@ -49,7 +49,7 @@ func (h *mp3Handler) ExtractDuration(filePath string) (float64, error) {
 		return 0, fmt.Errorf("not a valid MP3 file")
 	}
 
-	duration, err := h.extractDurationFromXing(file, buffer)
+	duration, err := h.extractDurationFromXing(buffer)
 	if err == nil && duration > 0 {
 		return duration, nil
 	}
@@ -75,7 +75,7 @@ func (h *mp3Handler) ExtractDuration(filePath string) (float64, error) {
 	return 0, fmt.Errorf("could not extract duration")
 }
 
-func (h *mp3Handler) extractDurationFromXing(file *os.File, buffer []byte) (float64, error) {
+func (h *mp3Handler) extractDurationFromXing(buffer []byte) (float64, error) {
 	for i := 0; i < len(buffer)-12; i++ {
 		if string(buffer[i:i+4]) == "Xing" || string(buffer[i:i+4]) == "Info" {
 			frames := uint32(buffer[i+8])<<24 | uint32(buffer[i+9])<<16 | uint32(buffer[i+10])<<8 | uint32(buffer[i+11])
@@ -419,4 +419,3 @@ func getMP3HandlerByFileType(fileType tag.FileType) FormatHandler {
 	}
 	return nil
 }
-
