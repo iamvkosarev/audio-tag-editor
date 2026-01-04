@@ -2,10 +2,11 @@ package handler
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamvkosarev/audio-tag-editor/internal/model"
 	"github.com/iamvkosarev/audio-tag-editor/internal/templates"
+	"github.com/iamvkosarev/audio-tag-editor/pkg/logs"
 )
 
 type AudioService interface {
@@ -178,7 +180,7 @@ func (h *Handler) UpdateTags(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			errMsg := fmt.Sprintf("file %s: %v", fileID, err)
-			log.Printf("Handler.UpdateTags: Error updating tags: %s", errMsg)
+			logs.Error("Handler.UpdateTags: Error updating tags", err)
 			errors = append(errors, errMsg)
 			continue
 		}
@@ -190,7 +192,7 @@ func (h *Handler) UpdateTags(w http.ResponseWriter, r *http.Request) {
 
 		if parseErr != nil {
 			errMsg := fmt.Sprintf("file %s: failed to re-parse: %v", fileID, parseErr)
-			log.Printf("Handler.UpdateTags: Error re-parsing file: %s", errMsg)
+			logs.Error("Handler.UpdateTags: Error re-parsing file", parseErr)
 			errors = append(errors, errMsg)
 			continue
 		}
@@ -216,7 +218,7 @@ func (h *Handler) UpdateTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Handler.UpdateTags: Failed to encode response: %v", err)
+		logs.Error("Handler.UpdateTags: Failed to encode response", err)
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
@@ -240,7 +242,9 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 
 	filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
 	if err != nil {
-		log.Printf("Handler.Download: Failed to prepare file with cover art: %v, using original file", err)
+		slog.Warn(
+			"Handler.Download: Failed to prepare file with cover art, using original file", slog.Any("error", err),
+		)
 		filePath = stored.Path
 		cleanup = func() {}
 	}
@@ -251,14 +255,14 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	if _, err := os.Stat(filePath); err != nil {
-		log.Printf("Handler.Download: File does not exist: %v", err)
+		logs.Error("Handler.Download: File does not exist", err)
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Printf("Handler.Download: Failed to open file: %v", err)
+		logs.Error("Handler.Download: Failed to open file", err)
 		http.Error(w, "Failed to open file", http.StatusInternalServerError)
 		return
 	}
@@ -266,7 +270,7 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 
 	stat, err := file.Stat()
 	if err != nil {
-		log.Printf("Handler.Download: Failed to stat file: %v", err)
+		logs.Error("Handler.Download: Failed to stat file", err)
 		http.Error(w, "Failed to stat file", http.StatusInternalServerError)
 		return
 	}
@@ -278,7 +282,9 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", stat.Size()))
 
 	io.Copy(w, file)
-	log.Printf("Handler.Download: File downloaded: ID=%s, Filename=%s", fileID, downloadFilename)
+	slog.Info(
+		"Handler.Download: File downloaded", slog.String("fileID", fileID), slog.String("filename", downloadFilename),
+	)
 }
 
 func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
@@ -305,7 +311,10 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 	for _, stored := range filesToZip {
 		filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
 		if err != nil {
-			log.Printf("Handler.DownloadAll: Failed to prepare file %s: %v, using original file", stored.Path, err)
+			slog.Warn(
+				"Handler.DownloadAll: Failed to prepare file, using original file", slog.String("path", stored.Path),
+				slog.Any("error", err),
+			)
 			filePath = stored.Path
 			cleanup = func() {}
 		}
@@ -314,7 +323,7 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 			if cleanup != nil {
 				cleanup()
 			}
-			log.Printf("Handler.DownloadAll: File does not exist %s: %v", filePath, err)
+			logs.Error("Handler.DownloadAll: File does not exist", err, slog.String("path", filePath))
 			continue
 		}
 
@@ -323,7 +332,7 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 			if cleanup != nil {
 				cleanup()
 			}
-			log.Printf("Handler.DownloadAll: Failed to open file %s: %v", filePath, err)
+			logs.Error("Handler.DownloadAll: Failed to open file", err, slog.String("path", filePath))
 			continue
 		}
 
@@ -333,7 +342,7 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 			if cleanup != nil {
 				cleanup()
 			}
-			log.Printf("Handler.DownloadAll: Failed to stat file %s: %v", filePath, err)
+			logs.Error("Handler.DownloadAll: Failed to stat file", err, slog.String("path", filePath))
 			continue
 		}
 
@@ -350,7 +359,9 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 			if cleanup != nil {
 				cleanup()
 			}
-			log.Printf("Handler.DownloadAll: Failed to create zip entry for %s: %v", downloadFilename, err)
+			logs.Error(
+				"Handler.DownloadAll: Failed to create zip entry", err, slog.String("filename", downloadFilename),
+			)
 			continue
 		}
 
@@ -360,12 +371,14 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 			cleanup()
 		}
 		if err != nil {
-			log.Printf("Handler.DownloadAll: Failed to write file %s to zip: %v", downloadFilename, err)
+			logs.Error(
+				"Handler.DownloadAll: Failed to write file to zip", err, slog.String("filename", downloadFilename),
+			)
 			continue
 		}
 	}
 
-	log.Printf("Handler.DownloadAll: ZIP file created with %d files", len(filesToZip))
+	slog.Info("Handler.DownloadAll: ZIP file created", slog.Int("fileCount", len(filesToZip)))
 }
 
 func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +387,7 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("Handler.DownloadSelected: Failed to decode request: %v", err)
+		logs.Error("Handler.DownloadSelected: Failed to decode request", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -409,8 +422,9 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 	for _, stored := range filesToZip {
 		filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
 		if err != nil {
-			log.Printf(
-				"Handler.DownloadSelected: Failed to prepare file %s: %v, using original file", stored.Path, err,
+			slog.Warn(
+				"Handler.DownloadSelected: Failed to prepare file, using original file",
+				slog.String("path", stored.Path), slog.Any("error", err),
 			)
 			filePath = stored.Path
 			cleanup = func() {}
@@ -420,7 +434,7 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 			if cleanup != nil {
 				cleanup()
 			}
-			log.Printf("Handler.DownloadSelected: File does not exist %s: %v", filePath, err)
+			logs.Error("Handler.DownloadSelected: File does not exist", err, slog.String("path", filePath))
 			continue
 		}
 
@@ -429,7 +443,7 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 			if cleanup != nil {
 				cleanup()
 			}
-			log.Printf("Handler.DownloadSelected: Failed to open file %s: %v", filePath, err)
+			logs.Error("Handler.DownloadSelected: Failed to open file", err, slog.String("path", filePath))
 			continue
 		}
 
@@ -439,7 +453,7 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 			if cleanup != nil {
 				cleanup()
 			}
-			log.Printf("Handler.DownloadSelected: Failed to stat file %s: %v", filePath, err)
+			logs.Error("Handler.DownloadSelected: Failed to stat file", err, slog.String("path", filePath))
 			continue
 		}
 
@@ -456,7 +470,9 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 			if cleanup != nil {
 				cleanup()
 			}
-			log.Printf("Handler.DownloadSelected: Failed to create zip entry for %s: %v", downloadFilename, err)
+			logs.Error(
+				"Handler.DownloadSelected: Failed to create zip entry", err, slog.String("filename", downloadFilename),
+			)
 			continue
 		}
 
@@ -466,12 +482,14 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 			cleanup()
 		}
 		if err != nil {
-			log.Printf("Handler.DownloadSelected: Failed to write file %s to zip: %v", downloadFilename, err)
+			logs.Error(
+				"Handler.DownloadSelected: Failed to write file to zip", err, slog.String("filename", downloadFilename),
+			)
 			continue
 		}
 	}
 
-	log.Printf("Handler.DownloadSelected: ZIP file created with %d files", len(filesToZip))
+	slog.Info("Handler.DownloadSelected: ZIP file created", slog.Int("fileCount", len(filesToZip)))
 }
 
 func (h *Handler) buildDownloadFilename(stored *storedFile) string {
@@ -597,7 +615,7 @@ func (h *Handler) prepareFileWithCoverArt(stored *storedFile) (string, func(), e
 	updateErr := func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("Handler.prepareFileWithCoverArt: Panic while embedding cover art: %v", r)
+				logs.Panic(context.Background(), "Handler.prepareFileWithCoverArt: Panic while embedding cover art", r)
 				err = fmt.Errorf("panic while embedding cover art: %v", r)
 			}
 		}()
@@ -605,15 +623,15 @@ func (h *Handler) prepareFileWithCoverArt(stored *storedFile) (string, func(), e
 	}()
 	if updateErr != nil {
 		os.Remove(tempPath)
-		log.Printf("Handler.prepareFileWithCoverArt: Failed to embed cover art: %v", updateErr)
+		logs.Error("Handler.prepareFileWithCoverArt: Failed to embed cover art", updateErr)
 		return stored.Path, func() {}, fmt.Errorf("failed to embed cover art: %w", updateErr)
 	}
 
 	if err := os.Chtimes(tempPath, originalModTime, originalModTime); err != nil {
-		log.Printf("Handler.prepareFileWithCoverArt: Failed to set modification time: %v", err)
+		slog.Warn("Handler.prepareFileWithCoverArt: Failed to set modification time", slog.Any("error", err))
 	}
 
-	log.Printf("Handler.prepareFileWithCoverArt: Successfully embedded cover art for %s", stored.Path)
+	slog.Info("Handler.prepareFileWithCoverArt: Successfully embedded cover art", slog.String("path", stored.Path))
 
 	cleanup := func() {
 		os.Remove(tempPath)

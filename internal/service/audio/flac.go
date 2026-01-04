@@ -2,10 +2,11 @@ package audio
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/go-flac/flacvorbis"
 	"github.com/go-flac/go-flac"
 	"github.com/iamvkosarev/audio-tag-editor/internal/model"
+	"github.com/iamvkosarev/audio-tag-editor/pkg/logs"
 	"github.com/tallenh/audiometa"
 )
 
@@ -149,7 +151,7 @@ func (h *flacHandler) UpdateTags(
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("FLAC UpdateTags: audiometa panicked: %v, falling back to direct FLAC library", r)
+					logs.Panic(context.Background(), "FLAC UpdateTags: audiometa panicked, falling back to direct FLAC library", r)
 					audiometaUsed = false
 				}
 			}()
@@ -646,7 +648,7 @@ func (h *flacHandler) ParseWithAudiometa(filePath string) (*model.FileMetadata, 
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("ParseWithAudiometa: audiometa panicked: %v for file: %s", r, filePath)
+				logs.Panic(context.Background(), "ParseWithAudiometa: audiometa panicked", r, slog.String("filePath", filePath))
 				audiometaErr = fmt.Errorf("audiometa panic: %v", r)
 			}
 		}()

@@ -1,16 +1,18 @@
 package audio
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/dhowden/tag"
 	"github.com/iamvkosarev/audio-tag-editor/internal/model"
+	"github.com/iamvkosarev/audio-tag-editor/pkg/logs"
 )
 
 func extractMetadata(metadata tag.Metadata, filename string, size int64) *model.FileMetadata {
@@ -99,10 +101,7 @@ func parseFileWithTag(filePath string) (*model.FileMetadata, error) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						log.Printf(
-							"parseFileWithTag: audiometa panicked: %v, falling back to tag library for file: %s", r,
-							filePath,
-						)
+						logs.Panic(context.Background(), "parseFileWithTag: audiometa panicked, falling back to tag library", r, slog.String("filePath", filePath))
 						flacErr = fmt.Errorf("audiometa panic: %v", r)
 					}
 				}()
