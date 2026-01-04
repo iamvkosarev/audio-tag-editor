@@ -2,38 +2,32 @@ package config
 
 import (
 	"fmt"
-	"os"
+	"github.com/ilyakaznacheev/cleanenv"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
-type Config struct {
-	Server ServerConfig `yaml:"server"`
 }
 
 type ServerConfig struct {
-	Host         string        `yaml:"host"`
-	Port         int           `yaml:"port"`
-	ReadTimeout  time.Duration `yaml:"read_timeout"`
-	WriteTimeout time.Duration `yaml:"write_timeout"`
-	IdleTimeout  time.Duration `yaml:"idle_timeout"`
+	Host         string        `env:"SERVER_HOST" env-default:"0.0.0.0"`
+	Port         string        `env:"HTTP_PORT" env-default:"8080"`
+	IdleTimeout  time.Duration `env:"SERVER_IDLE_TIMEOUT" env-default:"60s""`
+	ReadTimeout  time.Duration `env:"HTTP_READ_TIMEOUT" env-default:"15s"`
+	WriteTimeout time.Duration `env:"HTTP_WRITE_TIMEOUT" env-default:"15s"`
 }
 
-func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
+type Config struct {
+	Server ServerConfig
+}
 
+func Load() (*Config, error) {
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+	if err := cleanenv.ReadEnv(&cfg); err != nil {
+		return nil, err
 	}
-
 	return &cfg, nil
 }
 
 func (c *ServerConfig) Address() string {
-	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+	return fmt.Sprintf("%s:%s", c.Host, c.Port)
 }

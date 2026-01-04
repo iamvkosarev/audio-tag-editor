@@ -5,10 +5,12 @@ import (
 
 	"github.com/iamvkosarev/audio-tag-editor/internal/app"
 	"github.com/iamvkosarev/audio-tag-editor/internal/config"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	cfg, err := config.Load("config/config.yaml")
+	godotenv.Load()
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}

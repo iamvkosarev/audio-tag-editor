@@ -6,6 +6,6 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./config:/app/config:ro
+      - ./.env:/app/.env
     restart: unless-stopped
 
