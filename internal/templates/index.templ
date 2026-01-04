@@ -7,32 +7,8 @@ templ Index() {
 			<meta charset="UTF-8">
 			<meta name="viewport" content="width=device-width, initial-scale=1.0">
 			<title>Music Tag Editor</title>
+			@Colors()
 			<style>
-				:root {
-					--bg-primary: #1a1a1a;
-					--bg-secondary: #2d2d2d;
-					--bg-tertiary: #3d3d3d;
-					--text-primary: #e0e0e0;
-					--text-secondary: #b0b0b0;
-					--border-color: #404040;
-					--shadow: rgba(0, 0, 0, 0.3);
-					--hover-bg: #3d3d3d;
-					--selected-bg: #2a4a6a;
-					--changed-bg: #4a3a1a;
-				}
-
-				[data-theme="light"] {
-					--bg-primary: #f5f5f5;
-					--bg-secondary: #ffffff;
-					--bg-tertiary: #f8f9fa;
-					--text-primary: #333333;
-					--text-secondary: #666666;
-					--border-color: #dddddd;
-					--shadow: rgba(0, 0, 0, 0.1);
-					--hover-bg: #f8f9fa;
-					--selected-bg: #e7f3ff;
-					--changed-bg: #fff3cd;
-				}
 
 				* {
 					transition: background-color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
@@ -87,7 +63,7 @@ templ Index() {
 					transform: scale(1.1);
 				}
 				.theme-toggle:focus {
-					outline: 2px solid #007bff;
+					outline: 2px solid var(--focus-blue);
 					outline-offset: 2px;
 				}
 				.upload-section {
@@ -117,8 +93,8 @@ templ Index() {
 					height: 0;
 				}
 				.upload-btn, .action-btn {
-					background-color: #007bff;
-					color: white;
+					background-color: var(--primary-blue);
+					color: var(--white);
 					padding: 0.75rem 1.5rem;
 					border: none;
 					border-radius: 4px;
@@ -127,29 +103,29 @@ templ Index() {
 					transition: background-color 0.2s;
 				}
 				.upload-btn:hover, .action-btn:hover {
-					background-color: #0056b3;
+					background-color: var(--primary-blue-hover);
 				}
 				.upload-btn:focus, .action-btn:focus {
-					outline: 2px solid #007bff;
+					outline: 2px solid var(--focus-blue);
 					outline-offset: 2px;
 				}
 				.action-btn:disabled {
-					background-color: #ccc;
+					background-color: var(--disabled-gray);
 					cursor: not-allowed;
 				}
 				.action-btn.active {
-					background-color: #28a745;
+					background-color: var(--success-green);
 				}
 				.action-btn.edit-btn {
-					background-color: #ff9800;
-					color: white;
+					background-color: var(--warning-orange);
+					color: var(--white);
 				}
 				.action-btn.edit-btn:hover:not(:disabled) {
-					background-color: #f57c00;
+					background-color: var(--warning-orange-hover);
 				}
 				.action-btn.edit-btn:disabled {
-					background-color: #ccc;
-					color: white;
+					background-color: var(--disabled-gray);
+					color: var(--white);
 					cursor: not-allowed;
 				}
 				.modal-overlay {
@@ -159,7 +135,7 @@ templ Index() {
 					left: 0;
 					width: 100%;
 					height: 100%;
-					background-color: rgba(0, 0, 0, 0.5);
+					background-color: var(--modal-overlay);
 					z-index: 1000;
 					align-items: center;
 					justify-content: center;
@@ -218,40 +194,40 @@ templ Index() {
 					color: var(--text-primary);
 				}
 				.btn-primary {
-					background-color: #007bff;
-					color: white;
+					background-color: var(--primary-blue);
+					color: var(--white);
 					padding: 0.5rem 1rem;
 					border: none;
 					border-radius: 4px;
 					cursor: pointer;
 				}
 				.btn-primary:hover {
-					background-color: #0056b3;
+					background-color: var(--primary-blue-hover);
 				}
 				.btn-primary:focus {
-					outline: 2px solid #007bff;
+					outline: 2px solid var(--focus-blue);
 					outline-offset: 2px;
 				}
 				.file-edit-btn {
-					background-color: #ff9800;
-					color: white;
+					background-color: var(--warning-orange);
+					color: var(--white);
 				}
 				.file-edit-btn:hover {
-					background-color: #f57c00;
+					background-color: var(--warning-orange-hover);
 				}
 				.btn-secondary {
-					background-color: #6c757d;
-					color: white;
+					background-color: var(--secondary-gray);
+					color: var(--white);
 					padding: 0.5rem 1rem;
 					border: none;
 					border-radius: 4px;
 					cursor: pointer;
 				}
 				.btn-secondary:hover {
-					background-color: #5a6268;
+					background-color: var(--secondary-gray-hover);
 				}
 				.btn-secondary:focus {
-					outline: 2px solid #6c757d;
+					outline: 2px solid var(--secondary-gray);
 					outline-offset: 2px;
 				}
 				.files-table tr.selected {
@@ -265,7 +241,7 @@ templ Index() {
 					text-align: center;
 				}
 				.checkbox-cell input[type="checkbox"]:focus {
-					outline: 2px solid #007bff;
+					outline: 2px solid var(--focus-blue);
 					outline-offset: 2px;
 				}
 				input[type="checkbox"] {
@@ -316,7 +292,7 @@ templ Index() {
 					top: 50%;
 					transform: translateY(-50%);
 					font-size: 0.8rem;
-					color: #007bff;
+					color: var(--primary-blue);
 				}
 				.files-table th.sortable .sort-indicator::after {
 					content: ' ↕';
@@ -370,7 +346,7 @@ templ Index() {
 					display: none;
 					width: 16px;
 					height: 16px;
-					border: 2px solid #ffffff;
+					border: 2px solid var(--white);
 					border-top: 2px solid transparent;
 					border-radius: 50%;
 					animation: spin 0.8s linear infinite;
@@ -393,8 +369,8 @@ templ Index() {
 					display: inline-block;
 				}
 				.column-selector-btn {
-					background-color: #007bff;
-					color: white;
+					background-color: var(--primary-blue);
+					color: var(--white);
 					padding: 0.75rem 1.5rem;
 					border: none;
 					border-radius: 4px;
@@ -403,10 +379,10 @@ templ Index() {
 					transition: background-color 0.2s;
 				}
 				.column-selector-btn:hover {
-					background-color: #0056b3;
+					background-color: var(--primary-blue-hover);
 				}
 				.column-selector-btn:focus {
-					outline: 2px solid #007bff;
+					outline: 2px solid var(--focus-blue);
 					outline-offset: 2px;
 				}
 				.column-selector-dropdown {
@@ -441,7 +417,7 @@ templ Index() {
 					cursor: pointer;
 					width: 18px;
 					height: 18px;
-					accent-color: #007bff;
+					accent-color: var(--primary-blue);
 				}
 				.column-selector-item label {
 					margin: 0;
@@ -450,8 +426,8 @@ templ Index() {
 					font-weight: normal;
 				}
 				.column-selector-item:focus-within {
-					background-color: #e7f3ff;
-					outline: 2px solid #007bff;
+					background-color: var(--selected-bg);
+					outline: 2px solid var(--focus-blue);
 					outline-offset: -2px;
 				}
 				.column-hidden {
