@@ -93,40 +93,72 @@ templ Index() {
 					height: 0;
 				}
 				.upload-btn, .action-btn {
-					background-color: var(--primary-blue);
-					color: var(--white);
+					background-color: transparent;
+					color: var(--btn-text-active);
 					padding: 0.75rem 1.5rem;
-					border: none;
-					border-radius: 4px;
+					border: 2px solid var(--primary-blue);
+					border-radius: 12px;
 					cursor: pointer;
 					font-size: 1rem;
-					transition: background-color 0.2s;
+					font-weight: 500;
+					transition: all 0.2s ease;
 				}
 				.upload-btn:hover, .action-btn:hover {
-					background-color: var(--primary-blue-hover);
+					background-color: var(--primary-blue);
+					color: var(--white);
+					transform: translateY(-1px);
+					box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
 				}
 				.upload-btn:focus, .action-btn:focus {
 					outline: 2px solid var(--focus-blue);
 					outline-offset: 2px;
 				}
+				.upload-btn:active, .action-btn:active {
+					transform: translateY(0);
+				}
 				.action-btn:disabled {
-					background-color: var(--disabled-gray);
+					background-color: transparent;
+					border-color: var(--disabled-gray);
+					color: var(--btn-text-inactive);
 					cursor: not-allowed;
+					opacity: 0.5;
+				}
+				.action-btn:disabled:hover {
+					background-color: transparent;
+					transform: none;
+					box-shadow: none;
 				}
 				.action-btn.active {
+					background-color: transparent;
+					border-color: var(--success-green);
+					color: var(--btn-text-active);
+				}
+				.action-btn.active:hover {
 					background-color: var(--success-green);
+					color: var(--white);
+					box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
 				}
 				.action-btn.edit-btn {
-					background-color: var(--warning-orange);
-					color: var(--white);
+					background-color: transparent;
+					border-color: var(--warning-orange);
+					color: var(--btn-text-active);
 				}
 				.action-btn.edit-btn:hover:not(:disabled) {
-					background-color: var(--warning-orange-hover);
+					background-color: var(--warning-orange);
+					color: var(--white);
+					box-shadow: 0 4px 8px rgba(255, 152, 0, 0.3);
 				}
 				.action-btn.edit-btn:disabled {
-					background-color: var(--disabled-gray);
-					color: var(--white);
+					background-color: transparent;
+					border-color: var(--disabled-gray);
+					color: var(--btn-text-inactive);
 					cursor: not-allowed;
+					opacity: 0.5;
+				}
+				.action-btn.edit-btn:disabled:hover {
+					background-color: transparent;
+					transform: none;
+					box-shadow: none;
 				}
 				.modal-overlay {
 					display: none;
@@ -194,41 +226,66 @@ templ Index() {
 					color: var(--text-primary);
 				}
 				.btn-primary {
-					background-color: var(--primary-blue);
-					color: var(--white);
+					background-color: transparent;
+					color: var(--btn-text-active);
 					padding: 0.5rem 1rem;
-					border: none;
-					border-radius: 4px;
+					border: 2px solid var(--primary-blue);
+					border-radius: 12px;
 					cursor: pointer;
+					font-weight: 500;
+					transition: all 0.2s ease;
 				}
 				.btn-primary:hover {
-					background-color: var(--primary-blue-hover);
+					background-color: var(--primary-blue);
+					color: var(--white);
+					transform: translateY(-1px);
+					box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
 				}
 				.btn-primary:focus {
 					outline: 2px solid var(--focus-blue);
 					outline-offset: 2px;
 				}
+				.btn-primary:active {
+					transform: translateY(0);
+				}
 				.file-edit-btn {
-					background-color: var(--warning-orange);
-					color: var(--white);
+					background-color: transparent;
+					border: 2px solid var(--warning-orange);
+					color: var(--btn-text-active);
+					border-radius: 12px;
+					transition: all 0.2s ease;
 				}
 				.file-edit-btn:hover {
-					background-color: var(--warning-orange-hover);
+					background-color: var(--warning-orange);
+					color: var(--white);
+					transform: translateY(-1px);
+					box-shadow: 0 4px 8px rgba(255, 152, 0, 0.3);
+				}
+				.file-edit-btn:active {
+					transform: translateY(0);
 				}
 				.btn-secondary {
-					background-color: var(--secondary-gray);
-					color: var(--white);
+					background-color: transparent;
+					color: var(--btn-text-active);
 					padding: 0.5rem 1rem;
-					border: none;
-					border-radius: 4px;
+					border: 2px solid var(--secondary-gray);
+					border-radius: 12px;
 					cursor: pointer;
+					font-weight: 500;
+					transition: all 0.2s ease;
 				}
 				.btn-secondary:hover {
-					background-color: var(--secondary-gray-hover);
+					background-color: var(--secondary-gray);
+					color: var(--white);
+					transform: translateY(-1px);
+					box-shadow: 0 4px 8px rgba(108, 117, 125, 0.3);
 				}
 				.btn-secondary:focus {
 					outline: 2px solid var(--secondary-gray);
 					outline-offset: 2px;
+				}
+				.btn-secondary:active {
+					transform: translateY(0);
 				}
 				.files-table tr.selected {
 					background-color: var(--selected-bg);
@@ -369,21 +426,28 @@ templ Index() {
 					display: inline-block;
 				}
 				.column-selector-btn {
-					background-color: var(--primary-blue);
-					color: var(--white);
+					background-color: transparent;
+					color: var(--btn-text-active);
 					padding: 0.75rem 1.5rem;
-					border: none;
-					border-radius: 4px;
+					border: 2px solid var(--primary-blue);
+					border-radius: 12px;
 					cursor: pointer;
 					font-size: 1rem;
-					transition: background-color 0.2s;
+					font-weight: 500;
+					transition: all 0.2s ease;
 				}
 				.column-selector-btn:hover {
-					background-color: var(--primary-blue-hover);
+					background-color: var(--primary-blue);
+					color: var(--white);
+					transform: translateY(-1px);
+					box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
 				}
 				.column-selector-btn:focus {
 					outline: 2px solid var(--focus-blue);
 					outline-offset: 2px;
+				}
+				.column-selector-btn:active {
+					transform: translateY(0);
 				}
 				.column-selector-dropdown {
 					display: none;
