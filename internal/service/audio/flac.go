@@ -147,6 +147,22 @@ func (h *flacHandler) UpdateTags(
 	onlyCoverArt := coverArt != nil && *coverArt != "" && title == nil && artist == nil && album == nil && year == nil && track == nil && genre == nil
 
 	var audiometaUsed bool
+	var existingYearFromFile int
+	var existingTrackFromFile int
+	var existingMetadata *model.FileMetadata
+	if !onlyCoverArt && (year == nil || track == nil) {
+		var parseErr error
+		existingMetadata, parseErr = h.ParseWithAudiometa(filePath)
+		if parseErr == nil && existingMetadata != nil {
+			if year == nil && existingMetadata.Year > 0 {
+				existingYearFromFile = existingMetadata.Year
+			}
+			if track == nil && existingMetadata.Track > 0 {
+				existingTrackFromFile = existingMetadata.Track
+			}
+		}
+	}
+
 	if !onlyCoverArt && track == nil {
 		func() {
 			defer func() {
@@ -156,12 +172,37 @@ func (h *flacHandler) UpdateTags(
 				}
 			}()
 
-			tag, err := audiometa.OpenTag(filePath)
-			if err != nil {
+			var tagInterface interface{}
+			var openErr error
+			tagInterface, openErr = audiometa.OpenTag(filePath)
+			if openErr != nil {
 				return
 			}
 
 			audiometaUsed = true
+
+			type AudioMetaTagReader interface {
+				Year() string
+			}
+			var existingYearStr string
+			if audioTagReader, ok := tagInterface.(AudioMetaTagReader); ok {
+				existingYearStr = audioTagReader.Year()
+			}
+			
+			if existingYearStr == "" && existingYearFromFile > 0 {
+				existingYearStr = fmt.Sprintf("%d", existingYearFromFile)
+			}
+
+			type AudioMetaTagWriter interface {
+				SetTitle(string)
+				SetArtist(string)
+				SetAlbum(string)
+				SetYear(string)
+				SetGenre(string)
+				SetAlbumArtFromByteArray([]byte) error
+				Save() error
+			}
+			tag := tagInterface.(AudioMetaTagWriter)
 
 			if title != nil {
 				if *title == "" {
@@ -186,6 +227,10 @@ func (h *flacHandler) UpdateTags(
 			}
 			if year != nil {
 				tag.SetYear(fmt.Sprintf("%d", *year))
+			} else {
+				if existingYearStr != "" {
+					tag.SetYear(existingYearStr)
+				}
 			}
 			if genre != nil {
 				if *genre == "" {
@@ -206,31 +251,51 @@ func (h *flacHandler) UpdateTags(
 			if err := os.Chmod(filePath, 0644); err != nil {
 			}
 
-			if err := audiometa.SaveTag(tag); err != nil {
-				if err2 := tag.Save(); err2 != nil {
-					audiometaUsed = false
-					return
+			if idTag, ok := tagInterface.(*audiometa.IDTag); ok {
+				if err := audiometa.SaveTag(idTag); err != nil {
+					type AudioMetaTagSaver interface {
+						Save() error
+					}
+					if tagSaver, ok2 := tagInterface.(AudioMetaTagSaver); ok2 {
+						if err2 := tagSaver.Save(); err2 != nil {
+							audiometaUsed = false
+							return
+						}
+					} else {
+						audiometaUsed = false
+						return
+					}
 				}
+			}
+			
+			if (existingYearStr != "" && year == nil) || (existingYearFromFile > 0 && year == nil) {
+				audiometaUsed = false
+			}
+			if existingTrackFromFile > 0 && track == nil {
+				audiometaUsed = false
 			}
 		}()
 	}
 
+	if audiometaUsed {
+		return nil
+	}
+
+	stat, err = os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to stat file after audiometa: %w", err)
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
-		if !audiometaUsed {
-			return fmt.Errorf("failed to open file: %w", err)
-		}
-		return nil
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 
 	header := make([]byte, 10)
 	_, err = file.ReadAt(header, 0)
 	if err != nil {
 		file.Close()
-		if !audiometaUsed {
-			return fmt.Errorf("failed to read header: %w", err)
-		}
-		return nil
+		return fmt.Errorf("failed to read header: %w", err)
 	}
 
 	flacStartPos := int64(0)
@@ -242,10 +307,7 @@ func (h *flacHandler) UpdateTags(
 		_, err = file.ReadAt(id3TagData, 0)
 		if err != nil {
 			file.Close()
-			if !audiometaUsed {
-				return fmt.Errorf("failed to read ID3 tag: %w", err)
-			}
-			return nil
+			return fmt.Errorf("failed to read ID3 tag: %w", err)
 		}
 	}
 
@@ -253,18 +315,12 @@ func (h *flacHandler) UpdateTags(
 	_, err = file.ReadAt(flacData, flacStartPos)
 	file.Close()
 	if err != nil {
-		if !audiometaUsed {
-			return fmt.Errorf("failed to read FLAC data: %w", err)
-		}
-		return nil
+		return fmt.Errorf("failed to read FLAC data: %w", err)
 	}
 
 	tempFlacFile, err := os.CreateTemp("", "flac-edit-*")
 	if err != nil {
-		if !audiometaUsed {
-			return fmt.Errorf("failed to create temp FLAC file: %w", err)
-		}
-		return nil
+		return fmt.Errorf("failed to create temp FLAC file: %w", err)
 	}
 	tempFlacPath := tempFlacFile.Name()
 	defer os.Remove(tempFlacPath)
@@ -272,21 +328,15 @@ func (h *flacHandler) UpdateTags(
 	_, err = tempFlacFile.Write(flacData)
 	tempFlacFile.Close()
 	if err != nil {
-		if !audiometaUsed {
-			return fmt.Errorf("failed to write temp FLAC file: %w", err)
-		}
-		return nil
+		return fmt.Errorf("failed to write temp FLAC file: %w", err)
 	}
 
 	f, err := flac.ParseFile(tempFlacPath)
 	if err != nil {
-		if !audiometaUsed {
-			return fmt.Errorf("failed to parse FLAC file: %w", err)
-		}
-		return nil
+		return fmt.Errorf("failed to parse FLAC file: %w", err)
 	}
 
-	if !audiometaUsed {
+	if !audiometaUsed && !onlyCoverArt {
 		var vorbisComment *flacvorbis.MetaDataBlockVorbisComment
 		var vorbisIndex int = -1
 
@@ -306,7 +356,7 @@ func (h *flacHandler) UpdateTags(
 			vorbisIndex = -1
 		}
 
-		if !onlyCoverArt {
+		{
 			newComments := []string{}
 			for _, comment := range vorbisComment.Comments {
 				keep := true
@@ -363,9 +413,17 @@ func (h *flacHandler) UpdateTags(
 				yearStr := fmt.Sprintf("%d", *year)
 				if err := vorbisComment.Add(flacvorbis.FIELD_DATE, yearStr); err != nil {
 				}
+			} else if existingYearFromFile > 0 {
+				yearStr := fmt.Sprintf("%d", existingYearFromFile)
+				if err := vorbisComment.Add(flacvorbis.FIELD_DATE, yearStr); err != nil {
+				}
 			}
 			if track != nil {
 				trackStr := fmt.Sprintf("%d", *track)
+				if err := vorbisComment.Add(flacvorbis.FIELD_TRACKNUMBER, trackStr); err != nil {
+				}
+			} else if existingTrackFromFile > 0 {
+				trackStr := fmt.Sprintf("%d", existingTrackFromFile)
 				if err := vorbisComment.Add(flacvorbis.FIELD_TRACKNUMBER, trackStr); err != nil {
 				}
 			}
@@ -497,15 +555,21 @@ func (h *flacHandler) addID3v2TagsForMacOS(
 
 	flacStartPos := int64(0)
 	if string(header) == "ID3" {
-		id3v2Tag, err := id3v2.ParseReader(sourceFile, id3v2.Options{Parse: true})
-		if err == nil && id3v2Tag != nil {
-			if tagSize := id3v2Tag.Size(); tagSize > 0 {
+		existingID3v2Tag, err := id3v2.ParseReader(sourceFile, id3v2.Options{Parse: true})
+		if err == nil && existingID3v2Tag != nil {
+			if tagSize := existingID3v2Tag.Size(); tagSize > 0 {
 				flacStartPos = int64(tagSize + 10)
 			}
+			existingID3v2Tag.Close()
 		}
 		sourceFile.Seek(0, 0)
 	} else if string(header) != "fLaC" {
 		return fmt.Errorf("not a FLAC file")
+	}
+
+	var existingMetadata *model.FileMetadata
+	if title == nil || artist == nil || album == nil || year == nil || track == nil || genre == nil {
+		existingMetadata, _ = h.ParseWithAudiometa(filePath)
 	}
 
 	id3v2Tag := id3v2.NewEmptyTag()
@@ -513,21 +577,38 @@ func (h *flacHandler) addID3v2TagsForMacOS(
 
 	if title != nil {
 		id3v2Tag.SetTitle(*title)
+	} else if existingMetadata != nil && existingMetadata.Title != "" {
+		id3v2Tag.SetTitle(existingMetadata.Title)
 	}
+
 	if artist != nil {
 		id3v2Tag.SetArtist(*artist)
+	} else if existingMetadata != nil && existingMetadata.Artist != "" {
+		id3v2Tag.SetArtist(existingMetadata.Artist)
 	}
+
 	if album != nil {
 		id3v2Tag.SetAlbum(*album)
+	} else if existingMetadata != nil && existingMetadata.Album != "" {
+		id3v2Tag.SetAlbum(existingMetadata.Album)
 	}
+
 	if year != nil {
 		id3v2Tag.SetYear(fmt.Sprintf("%d", *year))
+	} else if existingMetadata != nil && existingMetadata.Year > 0 {
+		id3v2Tag.SetYear(fmt.Sprintf("%d", existingMetadata.Year))
 	}
+
 	if track != nil {
 		id3v2Tag.AddTextFrame("TRCK", id3v2.EncodingUTF8, fmt.Sprintf("%d", *track))
+	} else if existingMetadata != nil && existingMetadata.Track > 0 {
+		id3v2Tag.AddTextFrame("TRCK", id3v2.EncodingUTF8, fmt.Sprintf("%d", existingMetadata.Track))
 	}
+
 	if genre != nil {
 		id3v2Tag.SetGenre(*genre)
+	} else if existingMetadata != nil && existingMetadata.Genre != "" {
+		id3v2Tag.SetGenre(existingMetadata.Genre)
 	}
 
 	if coverArt != nil && *coverArt != "" {

@@ -965,6 +965,14 @@ templ Index() {
 
 				let currentCoverArt = null;
 				let coverArtChanged = false;
+				let originalFormValues = {
+					artist: null,
+					album: null,
+					year: null,
+					genre: null,
+					title: null,
+					track: null
+				};
 
 				document.getElementById('editCoverArt').addEventListener('change', function(e) {
 					const file = e.target.files[0];
@@ -1022,6 +1030,15 @@ templ Index() {
 					document.getElementById('editTrack').value = (commonTrack !== undefined && commonTrack !== null && commonTrack !== 0) ? commonTrack : '';
 					document.getElementById('editGenre').value = commonGenre || '';
 					
+					originalFormValues = {
+						artist: commonArtist || '',
+						album: commonAlbum || '',
+						year: (commonYear !== undefined && commonYear !== null) ? commonYear.toString() : '',
+						genre: commonGenre || '',
+						title: commonTitle || '',
+						track: (commonTrack !== undefined && commonTrack !== null && commonTrack !== 0) ? commonTrack.toString() : ''
+					};
+					
 					document.getElementById('editTitle').disabled = isMultiple;
 					document.getElementById('editTrack').disabled = isMultiple;
 					
@@ -1073,6 +1090,14 @@ templ Index() {
 					document.getElementById('coverPreview').innerHTML = '';
 					currentCoverArt = null;
 					coverArtChanged = false;
+					originalFormValues = {
+						artist: null,
+						album: null,
+						year: null,
+						genre: null,
+						title: null,
+						track: null
+					};
 				}
 
 				document.addEventListener('keydown', function(e) {
@@ -1117,23 +1142,34 @@ templ Index() {
 					const yearStr = document.getElementById('editYear').value.trim();
 					const genre = document.getElementById('editGenre').value.trim();
 					
-					let year = null;
-					if (yearStr !== '') {
-						const yearNum = parseInt(yearStr, 10);
-						if (!isNaN(yearNum) && yearNum > 0) {
-							year = yearNum;
-						}
-					}
-					
 					const updates = {
-						fileIds: Array.from(selectedFileIds),
-						artist: artist === '' ? null : artist,
-						album: album === '' ? null : album,
-						year: year,
-						genre: genre === '' ? null : genre
+						fileIds: Array.from(selectedFileIds)
 					};
 					
-					const fieldsToUpdate = new Set(['artist', 'album', 'year', 'genre']);
+					const fieldsToUpdate = new Set();
+					
+					if (artist !== originalFormValues.artist) {
+						updates.artist = artist === '' ? null : artist;
+						fieldsToUpdate.add('artist');
+					}
+					if (album !== originalFormValues.album) {
+						updates.album = album === '' ? null : album;
+						fieldsToUpdate.add('album');
+					}
+					if (genre !== originalFormValues.genre) {
+						updates.genre = genre;
+						fieldsToUpdate.add('genre');
+					}
+					if (yearStr !== originalFormValues.year) {
+						const yearNum = parseInt(yearStr, 10);
+						if (!isNaN(yearNum) && yearNum > 0) {
+							updates.year = yearNum;
+							fieldsToUpdate.add('year');
+						} else if (yearStr === '' && originalFormValues.year !== '') {
+							updates.year = null;
+							fieldsToUpdate.add('year');
+						}
+					}
 					
 					if (coverArtChanged && currentCoverArt !== null) {
 						updates.coverArt = currentCoverArt;
@@ -1143,12 +1179,19 @@ templ Index() {
 					if (!isMultiple) {
 						const title = document.getElementById('editTitle').value.trim();
 						const trackStr = document.getElementById('editTrack').value.trim();
-						updates.title = title === '' ? null : title;
-						fieldsToUpdate.add('title');
-						if (trackStr !== '') {
-							const trackNum = parseInt(trackStr, 10);
-							if (!isNaN(trackNum) && trackNum > 0) {
-								updates.track = trackNum;
+						if (title !== originalFormValues.title) {
+							updates.title = title === '' ? null : title;
+							fieldsToUpdate.add('title');
+						}
+						if (trackStr !== originalFormValues.track) {
+							if (trackStr !== '') {
+								const trackNum = parseInt(trackStr, 10);
+								if (!isNaN(trackNum) && trackNum > 0) {
+									updates.track = trackNum;
+									fieldsToUpdate.add('track');
+								}
+							} else if (originalFormValues.track !== '') {
+								updates.track = null;
 								fieldsToUpdate.add('track');
 							}
 						}
@@ -1242,7 +1285,7 @@ templ Index() {
 										}
 									}
 								}
-								if ('year' in updatedFile) {
+								if (fieldsToUpdate.has('year') && 'year' in updatedFile) {
 									const newYear = updatedFile.year !== undefined && updatedFile.year !== null ? updatedFile.year : 0;
 									if (currentFiles[index].year !== newYear) {
 										currentFiles[index].year = newYear;
@@ -1373,6 +1416,11 @@ templ Index() {
 				}
 
 				async function downloadAllFiles() {
+					if (currentFiles.length === 0) return;
+					
+					const fileIds = currentFiles.map(file => file.id).filter(id => id);
+					if (fileIds.length === 0) return;
+					
 					const spinner = document.getElementById('downloadAllSpinner');
 					const downloadBtn = document.getElementById('downloadAllBtn');
 					
@@ -1380,8 +1428,12 @@ templ Index() {
 					downloadBtn.disabled = true;
 					
 					try {
-						const response = await fetch('/api/download-all', {
-							method: 'GET'
+						const response = await fetch('/api/download-selected', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify({ fileIds: fileIds })
 						});
 						
 						if (!response.ok) {
