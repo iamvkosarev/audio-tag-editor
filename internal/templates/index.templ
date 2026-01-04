@@ -26,13 +26,20 @@ templ Index() {
 					margin-top: 0;
 				}
 				.upload-section {
-					margin: 2rem 0;
+					margin: 2rem 0 1rem 0;
 				}
 				.actions-section {
 					display: flex;
 					gap: 0.5rem;
 					margin: 1rem 0;
 					flex-wrap: wrap;
+					position: sticky;
+					top: 0;
+					background-color: white;
+					padding: 1rem 0;
+					z-index: 100;
+					margin-top: 0;
+					margin-bottom: 0;
 				}
 				.file-input-wrapper {
 					position: relative;
@@ -190,10 +197,18 @@ templ Index() {
 				input[type="checkbox"] {
 					cursor: pointer;
 				}
+				.table-container {
+					max-height: calc(100vh - 150px);
+					overflow-y: auto;
+					overflow-x: auto;
+					margin-top: 0;
+					border: 1px solid #ddd;
+					border-radius: 4px;
+				}
 				.files-table {
 					width: 100%;
 					border-collapse: collapse;
-					margin-top: 2rem;
+					margin-top: 0;
 					font-size: 0.9rem;
 				}
 				.files-table th,
@@ -208,11 +223,14 @@ templ Index() {
 					color: #333;
 					position: sticky;
 					top: 0;
+					z-index: 10;
 				}
 				.files-table th.sortable {
 					cursor: pointer;
 					user-select: none;
-					position: relative;
+					position: sticky;
+					top: 0;
+					z-index: 10;
 					padding-right: 1.5rem;
 				}
 				.files-table th.sortable:hover {
@@ -511,7 +529,7 @@ templ Index() {
 						return 'sortable';
 					};
 
-					let html = '<table class="files-table"><thead><tr>';
+					let html = '<div class="table-container"><table class="files-table"><thead><tr>';
 					if (selectionMode) {
 						html += '<th class="checkbox-cell"><input type="checkbox" id="selectAll" tabindex="0" onchange="toggleSelectAll(this.checked)"></th>';
 					}
@@ -557,7 +575,7 @@ templ Index() {
 						html += '</tr>';
 					});
 					
-					html += '</tbody></table>';
+					html += '</tbody></table></div>';
 					container.innerHTML = html;
 					updateEditButtonState();
 				}
