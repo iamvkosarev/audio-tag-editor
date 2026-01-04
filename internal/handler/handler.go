@@ -2,6 +2,7 @@ package handler
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -45,6 +46,57 @@ func New(audioService AudioService) *Handler {
 	}
 	go h.cleanupExpiredFiles()
 	return h
+}
+
+func copyWithFlush(dst io.Writer, src io.Reader, bufWriter *bufio.Writer, zipWriter *zip.Writer, flusher http.Flusher) (int64, error) {
+	buf := make([]byte, 64*1024)
+	var written int64
+	flushInterval := 2 * time.Second
+	lastFlush := time.Now()
+	chunkCount := 0
+
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr])
+			if nw < 0 || nr < nw {
+				nw = 0
+				if ew == nil {
+					ew = fmt.Errorf("invalid write result")
+				}
+			}
+			written += int64(nw)
+			if ew != nil {
+				return written, ew
+			}
+			if nr != nw {
+				return written, io.ErrShortWrite
+			}
+
+			chunkCount++
+			shouldFlush := false
+			if bufWriter != nil && flusher != nil {
+				if time.Since(lastFlush) >= flushInterval {
+					shouldFlush = true
+				} else if chunkCount%10 == 0 {
+					shouldFlush = true
+				}
+				if shouldFlush {
+					zipWriter.Flush()
+					bufWriter.Flush()
+					flusher.Flush()
+					lastFlush = time.Now()
+				}
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				return written, er
+			}
+			break
+		}
+	}
+	return written, nil
 }
 
 func (h *Handler) cleanupExpiredFiles() {
@@ -305,9 +357,23 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", zipFilename))
 
-	zipWriter := zip.NewWriter(w)
-	defer zipWriter.Close()
+	var zipWriter *zip.Writer
+	var bufWriter *bufio.Writer
+	var flusher http.Flusher
 
+	if f, ok := w.(http.Flusher); ok {
+		flusher = f
+		bufWriter = bufio.NewWriterSize(w, 64*1024)
+		zipWriter = zip.NewWriter(bufWriter)
+	} else {
+		zipWriter = zip.NewWriter(w)
+	}
+	defer zipWriter.Close()
+	if bufWriter != nil {
+		defer bufWriter.Flush()
+	}
+
+	successCount := 0
 	for _, stored := range filesToZip {
 		filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
 		if err != nil {
@@ -365,7 +431,7 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 			continue
 		}
 
-		_, err = io.Copy(zipEntry, file)
+		_, err = copyWithFlush(zipEntry, file, bufWriter, zipWriter, flusher)
 		file.Close()
 		if cleanup != nil {
 			cleanup()
@@ -376,9 +442,16 @@ func (h *Handler) DownloadAll(w http.ResponseWriter, _ *http.Request) {
 			)
 			continue
 		}
+
+		if bufWriter != nil && flusher != nil {
+			zipWriter.Flush()
+			bufWriter.Flush()
+			flusher.Flush()
+		}
+		successCount++
 	}
 
-	slog.Info("Handler.DownloadAll: ZIP file created", slog.Int("fileCount", len(filesToZip)))
+	slog.Info("Handler.DownloadAll: ZIP file created", slog.Int("fileCount", successCount), slog.Int("requestedCount", len(filesToZip)))
 }
 
 func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
@@ -416,9 +489,23 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", zipFilename))
 
-	zipWriter := zip.NewWriter(w)
-	defer zipWriter.Close()
+	var zipWriter *zip.Writer
+	var bufWriter *bufio.Writer
+	var flusher http.Flusher
 
+	if f, ok := w.(http.Flusher); ok {
+		flusher = f
+		bufWriter = bufio.NewWriterSize(w, 64*1024)
+		zipWriter = zip.NewWriter(bufWriter)
+	} else {
+		zipWriter = zip.NewWriter(w)
+	}
+	defer zipWriter.Close()
+	if bufWriter != nil {
+		defer bufWriter.Flush()
+	}
+
+	successCount := 0
 	for _, stored := range filesToZip {
 		filePath, cleanup, err := h.prepareFileWithCoverArt(stored)
 		if err != nil {
@@ -476,7 +563,7 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		_, err = io.Copy(zipEntry, file)
+		_, err = copyWithFlush(zipEntry, file, bufWriter, zipWriter, flusher)
 		file.Close()
 		if cleanup != nil {
 			cleanup()
@@ -487,9 +574,16 @@ func (h *Handler) DownloadSelected(w http.ResponseWriter, r *http.Request) {
 			)
 			continue
 		}
+
+		if bufWriter != nil && flusher != nil {
+			zipWriter.Flush()
+			bufWriter.Flush()
+			flusher.Flush()
+		}
+		successCount++
 	}
 
-	slog.Info("Handler.DownloadSelected: ZIP file created", slog.Int("fileCount", len(filesToZip)))
+	slog.Info("Handler.DownloadSelected: ZIP file created", slog.Int("fileCount", successCount), slog.Int("requestedCount", len(filesToZip)))
 }
 
 func (h *Handler) buildDownloadFilename(stored *storedFile) string {
