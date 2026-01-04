@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+type App struct {
+	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" env-default:"10s"`
+	LogMode         string        `env:"LOG_MODE" env-default:"debug"` // debug, dev or prod
 }
 
 type ServerConfig struct {
@@ -18,6 +21,7 @@ type ServerConfig struct {
 
 type Config struct {
 	Server ServerConfig
+	App    App
 }
 
 func Load() (*Config, error) {
